@@ -1,0 +1,27 @@
+{
+  "id": "session-unstable-fixture-pid-1001-listener-tcp-127-0-0-1-5173",
+  "pid": 1001,
+  "port": 5173,
+  "host": "127.0.0.1",
+  "url": "http://localhost:5173",
+  "processName": "node.exe",
+  "commandLine": "node %USERPROFILE%\\code\\vite-app\\node_modules\\vite\\bin\\vite.js --host 127.0.0.1 --token redacted-in-tests",
+  "executablePath": "C:\\Program Files\\nodejs\\node.exe",
+  "processInstanceId": null,
+  "listenerId": "session-unstable-fixture-pid-1001-listener-tcp-127-0-0-1-5173",
+  "identity": {
+    "status": "unstable",
+    "scope": "session-listener",
+    "processInstanceId": null,
+    "listenerId": "session-unstable-fixture-pid-1001-listener-tcp-127-0-0-1-5173",
+    "listenerKey": "listener-tcp-127-0-0-1-5173",
+    "pid": 1001,
+    "createdAt": null,
+    "source": "session-scoped-missing-creation-time",
+    "rawSource": "fixture",
+    "evidence": [
+      "stable process identity unavailable because creation time is missing or invalid",
+      "identifier is session-scoped and must not be used as durable process identity"
+    ]
+  }
+}

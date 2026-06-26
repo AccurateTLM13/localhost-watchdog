@@ -1,0 +1,17 @@
+{
+  "name": "localhost-watchdog",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Windows-first read-only scanner for local development servers.",
+  "license": "MIT",
+  "main": "watchdog.js",
+  "scripts": {
+    "scan": "node watchdog.js scan",
+    "start": "node src/server.js",
+    "test": "node --test",
+    "lint": "node scripts/lint.js"
+  },
+  "engines": {
+    "node": ">=22"
+  }
+}

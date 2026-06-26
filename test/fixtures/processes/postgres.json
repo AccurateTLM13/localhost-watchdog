@@ -1,0 +1,27 @@
+{
+  "id": "session-unstable-fixture-pid-4001-listener-tcp-127-0-0-1-5432",
+  "pid": 4001,
+  "port": 5432,
+  "host": "127.0.0.1",
+  "url": "http://localhost:5432",
+  "processName": "postgres.exe",
+  "commandLine": "postgres -D C:\\Users\\JP\\code\\db",
+  "executablePath": "C:\\Program Files\\PostgreSQL\\17\\bin\\postgres.exe",
+  "processInstanceId": null,
+  "listenerId": "session-unstable-fixture-pid-4001-listener-tcp-127-0-0-1-5432",
+  "identity": {
+    "status": "unstable",
+    "scope": "session-listener",
+    "processInstanceId": null,
+    "listenerId": "session-unstable-fixture-pid-4001-listener-tcp-127-0-0-1-5432",
+    "listenerKey": "listener-tcp-127-0-0-1-5432",
+    "pid": 4001,
+    "createdAt": null,
+    "source": "session-scoped-missing-creation-time",
+    "rawSource": "fixture",
+    "evidence": [
+      "stable process identity unavailable because creation time is missing or invalid",
+      "identifier is session-scoped and must not be used as durable process identity"
+    ]
+  }
+}

@@ -1,0 +1,726 @@
+{
+  "ok": true,
+  "generatedAt": "2026-06-16T21:00:00.000Z",
+  "platform": "win32",
+  "scanner": {
+    "destructiveActionsAvailable": false
+  },
+  "config": {
+    "devRoots": [
+      "%USERPROFILE%\\code",
+      "D:\\localhost-watchdog"
+    ]
+  },
+  "totals": {
+    "scanned": 12,
+    "visible": 8,
+    "hidden": 4
+  },
+  "hidden": {
+    "protected": 2,
+    "unknown": 0,
+    "nonLocalhost": 1,
+    "lowConfidence": 1
+  },
+  "history": {
+    "enabled": true,
+    "storageHealth": "available",
+    "retainedSnapshotCount": 3,
+    "oldestRetainedSnapshot": "2026-06-16T20:00:00.000Z",
+    "lastSuccessfulHistoryWrite": "2026-06-16T21:00:00.000Z",
+    "disappearedSincePrevious": 1,
+    "redactionPrivacyStatus": "privacy-safe normalized fields only; no command lines, paths, response bodies, or process trees persisted",
+    "warning": null
+  },
+  "servers": [
+    {
+      "id": "pid-101-created-2026-06-16t17-00-00-000z-listener-tcp-127-0-0-1-3000",
+      "pid": 101,
+      "port": 3000,
+      "host": "127.0.0.1",
+      "url": "http://localhost:3000",
+      "processName": "node.exe",
+      "commandLine": "node %USERPROFILE%\\code\\next-app\\node_modules\\next\\dist\\server\\lib\\start-server.js --token [REDACTED]",
+      "createdAt": "2026-06-16T17:00:00.000Z",
+      "ageMs": 14400000,
+      "ageLabel": "4 hours",
+      "timingSource": "Win32_Process.CreationDate",
+      "timingStatus": "available",
+      "timingError": null,
+      "category": "node-dev-server",
+      "confidence": 92,
+      "confidenceLevel": "high",
+      "safeToShow": true,
+      "safeToStop": false,
+      "safeToRestart": false,
+      "bulkStoppable": false,
+      "actions": [
+        "open",
+        "inspect"
+      ],
+      "launcher": {
+        "parentPid": 90,
+        "parentProcessName": "Code.exe",
+        "parentCategory": "editor",
+        "launcherName": "VS Code",
+        "confidenceImpact": 8,
+        "parentCommandLine": "Code.exe --folder-uri %USERPROFILE%\\code\\next-app --token [REDACTED]",
+        "parentExecutablePath": "%USERPROFILE%\\AppData\\Local\\Programs\\Microsoft VS Code\\Code.exe",
+        "evidence": [
+          {
+            "type": "launcher",
+            "score": 8,
+            "message": "parent process suggests launch context: VS Code"
+          }
+        ]
+      },
+      "processTree": {
+        "depth": 4,
+        "truncated": false,
+        "stopReason": "missing-parent-pid",
+        "rootLauncher": "VS Code",
+        "chain": [
+          {
+            "pid": 90,
+            "processName": "Code.exe",
+            "category": "editor",
+            "launcherName": "VS Code",
+            "commandLine": "Code.exe --folder-uri %USERPROFILE%\\code\\next-app --token [REDACTED]",
+            "executablePath": "%USERPROFILE%\\AppData\\Local\\Programs\\Microsoft VS Code\\Code.exe"
+          },
+          {
+            "pid": 91,
+            "processName": "powershell.exe",
+            "category": "terminal",
+            "launcherName": "PowerShell",
+            "commandLine": "powershell.exe npm run dev --password [REDACTED]",
+            "executablePath": "C:\\Windows\\System32\\WindowsPowerShell\\v1.0\\powershell.exe"
+          },
+          {
+            "pid": 92,
+            "processName": "npm.cmd",
+            "category": "package-manager",
+            "launcherName": "npm",
+            "commandLine": "npm run dev --token [REDACTED]",
+            "executablePath": "C:\\Program Files\\nodejs\\npm.cmd"
+          },
+          {
+            "pid": 101,
+            "processName": "node.exe",
+            "category": "runtime",
+            "launcherName": "node",
+            "commandLine": "node %USERPROFILE%\\code\\next-app\\node_modules\\next\\dist\\server\\lib\\start-server.js --token [REDACTED]",
+            "executablePath": "C:\\Program Files\\nodejs\\node.exe"
+          }
+        ],
+        "evidence": [
+          {
+            "type": "process-tree",
+            "score": 8,
+            "message": "process-tree pattern detected: VS Code -> shell -> package manager -> node"
+          }
+        ]
+      },
+      "project": {
+        "name": "next-owned-app",
+        "root": "%USERPROFILE%\\code\\next-app",
+        "confidence": 85,
+        "source": "marker:package.json",
+        "evidence": [
+          "found package.json with name 'next-owned-app'"
+        ],
+        "workingDirectory": "%USERPROFILE%\\code\\next-app"
+      },
+      "lifecycleContext": {
+        "label": "long-running",
+        "processAge": {
+          "createdAt": "2026-06-16T17:00:00.000Z",
+          "ageMs": 14400000,
+          "label": "4 hours",
+          "source": "Win32_Process.CreationDate",
+          "status": "available",
+          "error": null
+        },
+        "parentAvailable": true,
+        "rootLauncherAvailable": true,
+        "treeStopReason": "missing-parent-pid",
+        "detachedCandidate": false,
+        "staleCandidate": false,
+        "staleScore": 30,
+        "signals": [
+          {
+            "type": "age-threshold",
+            "score": 20,
+            "message": "process exceeds long-running threshold: 4 hours"
+          },
+          {
+            "type": "temporary-dev-server",
+            "score": 10,
+            "message": "listener resembles a temporary development server"
+          }
+        ],
+        "limitations": [
+          "informational heuristic only; not permission to stop, restart, kill, or clean up this process"
+        ]
+      },
+      "historyContext": {
+        "firstSeenAt": "2026-06-16T20:00:00.000Z",
+        "lastSeenAt": "2026-06-16T21:00:00.000Z",
+        "seenCount": 3,
+        "consecutiveSeenCount": 3,
+        "persistedAcrossScans": true,
+        "previouslySeen": true,
+        "reappeared": false,
+        "historyStatus": "available",
+        "evidence": [
+          {
+            "type": "history",
+            "score": 0,
+            "message": "process instance observed in 3 scans"
+          },
+          {
+            "type": "history",
+            "score": 0,
+            "message": "process instance continuously observed for 3 scans"
+          }
+        ]
+      },
+      "networkExposure": {
+        "level": "loopback",
+        "warning": false,
+        "message": "Listener is bound to loopback."
+      },
+      "httpProbe": {
+        "attempted": true,
+        "reachable": true,
+        "statusCode": 200,
+        "responseTimeMs": 24,
+        "finalUrl": "http://localhost:3000/",
+        "contentType": "text/html; charset=utf-8",
+        "title": "Next Dev App",
+        "hints": [
+          "next.js",
+          "react-dev-server"
+        ],
+        "redirectBlocked": false
+      },
+      "evidence": [
+        {
+          "type": "network",
+          "score": 20,
+          "message": "listener is bound to localhost"
+        },
+        {
+          "type": "launcher",
+          "score": 8,
+          "message": "launched from VS Code"
+        },
+        {
+          "type": "process-tree",
+          "score": 8,
+          "message": "process-tree ancestry: VS Code -> PowerShell -> npm -> node"
+        },
+        {
+          "type": "lifecycle",
+          "score": 0,
+          "message": "lifecycle label: long-running"
+        },
+        {
+          "type": "project-ownership",
+          "score": 20,
+          "message": "project ownership detected from marker:package.json: next-owned-app"
+        },
+        {
+          "type": "project-ownership",
+          "score": 0,
+          "message": "found package.json with name 'next-owned-app'"
+        },
+        {
+          "type": "http-probe",
+          "score": 0,
+          "message": "HTTP probe reached localhost with status 200; hints: next.js"
+        }
+      ],
+      "processInstanceId": "pid-101-created-2026-06-16t17-00-00-000z",
+      "listenerId": "pid-101-created-2026-06-16t17-00-00-000z-listener-tcp-127-0-0-1-3000",
+      "identity": {
+        "status": "stable",
+        "scope": "process-instance",
+        "processInstanceId": "pid-101-created-2026-06-16t17-00-00-000z",
+        "listenerId": "pid-101-created-2026-06-16t17-00-00-000z-listener-tcp-127-0-0-1-3000",
+        "listenerKey": "listener-tcp-127-0-0-1-3000",
+        "pid": 101,
+        "createdAt": "2026-06-16T17:00:00.000Z",
+        "source": "pid-and-creation-time",
+        "evidence": [
+          "process identity uses PID plus Win32_Process.CreationDate",
+          "listener host and port are secondary listener identity only"
+        ]
+      }
+    },
+    {
+      "id": "session-unstable-fixture-pid-102-listener-tcp-127-0-0-1-7000",
+      "pid": 102,
+      "port": 7000,
+      "host": "127.0.0.1",
+      "url": "http://localhost:7000",
+      "processName": "custom-tcp.exe",
+      "commandLine": "custom-tcp.exe --password [REDACTED]",
+      "createdAt": null,
+      "ageMs": null,
+      "ageLabel": "unknown age",
+      "timingSource": "Win32_Process.CreationDate",
+      "timingStatus": "unavailable",
+      "timingError": "creation time unavailable",
+      "category": "editor-helper",
+      "confidence": 40,
+      "confidenceLevel": "low",
+      "safeToShow": true,
+      "safeToStop": false,
+      "safeToRestart": false,
+      "bulkStoppable": false,
+      "launcher": {
+        "parentPid": 999,
+        "parentProcessName": null,
+        "parentCategory": "missing",
+        "launcherName": "Parent process unknown",
+        "confidenceImpact": 0,
+        "parentCommandLine": null,
+        "parentExecutablePath": null,
+        "evidence": [
+          {
+            "type": "launcher",
+            "score": 0,
+            "message": "parent process metadata unavailable for pid 999"
+          }
+        ]
+      },
+      "processTree": {
+        "depth": 1,
+        "truncated": false,
+        "stopReason": "missing-parent-metadata",
+        "rootLauncher": "custom-tcp.exe",
+        "chain": [
+          {
+            "pid": 102,
+            "processName": "custom-tcp.exe",
+            "category": "unknown",
+            "launcherName": null,
+            "commandLine": "custom-tcp.exe --password [REDACTED]",
+            "executablePath": "C:\\Tools\\custom-tcp.exe"
+          }
+        ],
+        "evidence": [
+          {
+            "type": "process-tree",
+            "score": 0,
+            "message": "process-tree traversal stopped because parent metadata is unavailable for pid 999"
+          }
+        ]
+      },
+      "lifecycleContext": {
+        "label": "unknown",
+        "processAge": {
+          "createdAt": null,
+          "ageMs": null,
+          "label": "unknown age",
+          "source": "Win32_Process.CreationDate",
+          "status": "unavailable",
+          "error": "creation time unavailable"
+        },
+        "parentAvailable": false,
+        "rootLauncherAvailable": false,
+        "treeStopReason": "missing-parent-metadata",
+        "detachedCandidate": false,
+        "staleCandidate": false,
+        "staleScore": 0,
+        "signals": [
+          {
+            "type": "missing-parent",
+            "score": 20,
+            "message": "immediate parent process metadata is unavailable"
+          }
+        ],
+        "limitations": [
+          "editor-helper is excluded from stale-candidate scoring",
+          "process timing is unavailable",
+          "informational heuristic only; not permission to stop, restart, kill, or clean up this process"
+        ]
+      },
+      "historyContext": {
+        "firstSeenAt": null,
+        "lastSeenAt": null,
+        "seenCount": 0,
+        "consecutiveSeenCount": 0,
+        "persistedAcrossScans": false,
+        "previouslySeen": false,
+        "reappeared": false,
+        "historyStatus": "corrupt-recovered",
+        "evidence": [
+          {
+            "type": "history",
+            "score": 0,
+            "message": "history file was invalid JSON; started a fresh in-memory history"
+          }
+        ]
+      },
+      "networkExposure": {
+        "level": "loopback",
+        "warning": false,
+        "message": "Listener is bound to loopback."
+      },
+      "httpProbe": {
+        "attempted": true,
+        "reachable": false,
+        "responseTimeMs": 8,
+        "error": "Non-HTTP response"
+      },
+      "evidence": [
+        {
+          "type": "category",
+          "score": 20,
+          "message": "editor or IDE helper owns a localhost listener"
+        },
+        {
+          "type": "http-probe",
+          "score": 0,
+          "message": "HTTP probe did not reach service: Non-HTTP response"
+        }
+      ],
+      "processInstanceId": null,
+      "listenerId": "session-unstable-fixture-pid-102-listener-tcp-127-0-0-1-7000",
+      "identity": {
+        "status": "unstable",
+        "scope": "session-listener",
+        "processInstanceId": null,
+        "listenerId": "session-unstable-fixture-pid-102-listener-tcp-127-0-0-1-7000",
+        "listenerKey": "listener-tcp-127-0-0-1-7000",
+        "pid": 102,
+        "createdAt": null,
+        "source": "session-scoped-missing-creation-time",
+        "rawSource": "fixture",
+        "evidence": [
+          "stable process identity unavailable because creation time is missing or invalid",
+          "identifier is session-scoped and must not be used as durable process identity"
+        ]
+      }
+    },
+    {
+      "id": "session-unstable-fixture-pid-103-listener-tcp-0-0-0-0-5173",
+      "pid": 103,
+      "port": 5173,
+      "host": "0.0.0.0",
+      "url": "http://localhost:5173",
+      "processName": "node.exe",
+      "commandLine": "node %USERPROFILE%\\code\\vite-app\\node_modules\\vite\\bin\\vite.js",
+      "category": "node-dev-server",
+      "confidence": 72,
+      "confidenceLevel": "medium",
+      "safeToShow": true,
+      "safeToStop": false,
+      "safeToRestart": false,
+      "bulkStoppable": false,
+      "networkExposure": {
+        "level": "all-interfaces",
+        "warning": true,
+        "message": "Listener binds to all interfaces; probe uses localhost only."
+      },
+      "httpProbe": {
+        "attempted": true,
+        "reachable": true,
+        "statusCode": 200,
+        "responseTimeMs": 18,
+        "finalUrl": "http://localhost:5173/",
+        "contentType": "text/html",
+        "title": "Vite Network App",
+        "hints": [
+          "vite"
+        ],
+        "redirectBlocked": false
+      },
+      "evidence": [
+        {
+          "type": "network",
+          "score": -20,
+          "message": "listener binds to all interfaces"
+        },
+        {
+          "type": "category",
+          "score": 45,
+          "message": "Node runtime and dev-server command detected"
+        }
+      ],
+      "processInstanceId": null,
+      "listenerId": "session-unstable-fixture-pid-103-listener-tcp-0-0-0-0-5173",
+      "identity": {
+        "status": "unstable",
+        "scope": "session-listener",
+        "processInstanceId": null,
+        "listenerId": "session-unstable-fixture-pid-103-listener-tcp-0-0-0-0-5173",
+        "listenerKey": "listener-tcp-0-0-0-0-5173",
+        "pid": 103,
+        "createdAt": null,
+        "source": "session-scoped-missing-creation-time",
+        "rawSource": "fixture",
+        "evidence": [
+          "stable process identity unavailable because creation time is missing or invalid",
+          "identifier is session-scoped and must not be used as durable process identity"
+        ]
+      }
+    },
+    {
+      "id": "session-unstable-fixture-pid-104-listener-tcp-127-0-0-1-45678",
+      "pid": 104,
+      "port": 45678,
+      "host": "127.0.0.1",
+      "url": "http://localhost:45678",
+      "processName": "mystery.exe",
+      "commandLine": "mystery.exe --listen",
+      "category": "unknown-listener",
+      "confidence": 35,
+      "confidenceLevel": "low",
+      "safeToShow": true,
+      "safeToStop": false,
+      "safeToRestart": false,
+      "bulkStoppable": false,
+      "networkExposure": {
+        "level": "loopback",
+        "warning": false,
+        "message": "Listener is bound to loopback."
+      },
+      "httpProbe": {
+        "attempted": false
+      },
+      "evidence": [
+        {
+          "type": "category",
+          "score": 0,
+          "message": "no explicit category rule matched"
+        }
+      ],
+      "processInstanceId": null,
+      "listenerId": "session-unstable-fixture-pid-104-listener-tcp-127-0-0-1-45678",
+      "identity": {
+        "status": "unstable",
+        "scope": "session-listener",
+        "processInstanceId": null,
+        "listenerId": "session-unstable-fixture-pid-104-listener-tcp-127-0-0-1-45678",
+        "listenerKey": "listener-tcp-127-0-0-1-45678",
+        "pid": 104,
+        "createdAt": null,
+        "source": "session-scoped-missing-creation-time",
+        "rawSource": "fixture",
+        "evidence": [
+          "stable process identity unavailable because creation time is missing or invalid",
+          "identifier is session-scoped and must not be used as durable process identity"
+        ]
+      }
+    },
+    {
+      "id": "session-unstable-fixture-pid-105-listener-tcp-127-0-0-1-11434",
+      "pid": 105,
+      "port": 11434,
+      "host": "127.0.0.1",
+      "url": "http://localhost:11434",
+      "processName": "ollama.exe",
+      "commandLine": "ollama serve",
+      "category": "local-ai-server",
+      "confidence": 65,
+      "confidenceLevel": "medium",
+      "safeToShow": true,
+      "safeToStop": false,
+      "safeToRestart": false,
+      "bulkStoppable": false,
+      "networkExposure": {
+        "level": "loopback",
+        "warning": false,
+        "message": "Listener is bound to loopback."
+      },
+      "httpProbe": {
+        "attempted": true,
+        "reachable": true,
+        "statusCode": 200,
+        "responseTimeMs": 12,
+        "finalUrl": "http://localhost:11434/",
+        "contentType": "application/json",
+        "title": null,
+        "hints": [
+          "ollama"
+        ],
+        "redirectBlocked": false
+      },
+      "evidence": [
+        {
+          "type": "category",
+          "score": 45,
+          "message": "local AI or companion server detected"
+        }
+      ],
+      "processInstanceId": null,
+      "listenerId": "session-unstable-fixture-pid-105-listener-tcp-127-0-0-1-11434",
+      "identity": {
+        "status": "unstable",
+        "scope": "session-listener",
+        "processInstanceId": null,
+        "listenerId": "session-unstable-fixture-pid-105-listener-tcp-127-0-0-1-11434",
+        "listenerKey": "listener-tcp-127-0-0-1-11434",
+        "pid": 105,
+        "createdAt": null,
+        "source": "session-scoped-missing-creation-time",
+        "rawSource": "fixture",
+        "evidence": [
+          "stable process identity unavailable because creation time is missing or invalid",
+          "identifier is session-scoped and must not be used as durable process identity"
+        ]
+      }
+    },
+    {
+      "id": "session-unstable-fixture-pid-106-listener-tcp-127-0-0-1-5432",
+      "pid": 106,
+      "port": 5432,
+      "host": "127.0.0.1",
+      "url": "http://localhost:5432",
+      "processName": "postgres.exe",
+      "commandLine": "postgres -D %USERPROFILE%\\code\\db",
+      "category": "database",
+      "confidence": 55,
+      "confidenceLevel": "medium",
+      "safeToShow": true,
+      "safeToStop": false,
+      "safeToRestart": false,
+      "bulkStoppable": false,
+      "networkExposure": {
+        "level": "loopback",
+        "warning": false,
+        "message": "Listener is bound to loopback."
+      },
+      "httpProbe": {
+        "attempted": true,
+        "reachable": false,
+        "responseTimeMs": 5,
+        "error": "Connection reset"
+      },
+      "evidence": [
+        {
+          "type": "category",
+          "score": 35,
+          "message": "database process or command detected"
+        }
+      ],
+      "processInstanceId": null,
+      "listenerId": "session-unstable-fixture-pid-106-listener-tcp-127-0-0-1-5432",
+      "identity": {
+        "status": "unstable",
+        "scope": "session-listener",
+        "processInstanceId": null,
+        "listenerId": "session-unstable-fixture-pid-106-listener-tcp-127-0-0-1-5432",
+        "listenerKey": "listener-tcp-127-0-0-1-5432",
+        "pid": 106,
+        "createdAt": null,
+        "source": "session-scoped-missing-creation-time",
+        "rawSource": "fixture",
+        "evidence": [
+          "stable process identity unavailable because creation time is missing or invalid",
+          "identifier is session-scoped and must not be used as durable process identity"
+        ]
+      }
+    },
+    {
+      "id": "session-unstable-fixture-pid-107-listener-tcp-127-0-0-1-9222",
+      "pid": 107,
+      "port": 9222,
+      "host": "127.0.0.1",
+      "url": "http://localhost:9222",
+      "processName": "chrome.exe",
+      "commandLine": "chrome.exe --remote-debugging-port=9222",
+      "category": "browser-helper",
+      "confidence": 40,
+      "confidenceLevel": "low",
+      "safeToShow": true,
+      "safeToStop": false,
+      "safeToRestart": false,
+      "bulkStoppable": false,
+      "networkExposure": {
+        "level": "loopback",
+        "warning": false,
+        "message": "Listener is bound to loopback."
+      },
+      "httpProbe": {
+        "attempted": false
+      },
+      "evidence": [
+        {
+          "type": "category",
+          "score": 20,
+          "message": "browser process owns a localhost listener"
+        }
+      ],
+      "processInstanceId": null,
+      "listenerId": "session-unstable-fixture-pid-107-listener-tcp-127-0-0-1-9222",
+      "identity": {
+        "status": "unstable",
+        "scope": "session-listener",
+        "processInstanceId": null,
+        "listenerId": "session-unstable-fixture-pid-107-listener-tcp-127-0-0-1-9222",
+        "listenerKey": "listener-tcp-127-0-0-1-9222",
+        "pid": 107,
+        "createdAt": null,
+        "source": "session-scoped-missing-creation-time",
+        "rawSource": "fixture",
+        "evidence": [
+          "stable process identity unavailable because creation time is missing or invalid",
+          "identifier is session-scoped and must not be used as durable process identity"
+        ]
+      }
+    },
+    {
+      "id": "session-unstable-fixture-pid-108-listener-tcp-127-0-0-1-445",
+      "pid": 108,
+      "port": 445,
+      "host": "127.0.0.1",
+      "url": "http://localhost:445",
+      "processName": "System",
+      "commandLine": null,
+      "category": "system-or-protected",
+      "confidence": 0,
+      "confidenceLevel": "low",
+      "safeToShow": true,
+      "safeToStop": false,
+      "safeToRestart": false,
+      "bulkStoppable": false,
+      "networkExposure": {
+        "level": "loopback",
+        "warning": false,
+        "message": "Listener is bound to loopback."
+      },
+      "httpProbe": {
+        "attempted": false
+      },
+      "evidence": [
+        {
+          "type": "protected-port",
+          "score": -100,
+          "message": "configured protected port"
+        }
+      ],
+      "processInstanceId": null,
+      "listenerId": "session-unstable-fixture-pid-108-listener-tcp-127-0-0-1-445",
+      "identity": {
+        "status": "unstable",
+        "scope": "session-listener",
+        "processInstanceId": null,
+        "listenerId": "session-unstable-fixture-pid-108-listener-tcp-127-0-0-1-445",
+        "listenerKey": "listener-tcp-127-0-0-1-445",
+        "pid": 108,
+        "createdAt": null,
+        "source": "session-scoped-missing-creation-time",
+        "rawSource": "fixture",
+        "evidence": [
+          "stable process identity unavailable because creation time is missing or invalid",
+          "identifier is session-scoped and must not be used as durable process identity"
+        ]
+      }
+    }
+  ],
+  "errors": []
+}

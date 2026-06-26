@@ -1,0 +1,27 @@
+{
+  "id": "session-unstable-fixture-pid-5002-listener-tcp-127-0-0-1-9223",
+  "pid": 5002,
+  "port": 9223,
+  "host": "127.0.0.1",
+  "url": "http://localhost:9223",
+  "processName": "msedge.exe",
+  "commandLine": "msedge.exe --remote-debugging-port=9223",
+  "executablePath": "C:\\Program Files (x86)\\Microsoft\\Edge\\Application\\msedge.exe",
+  "processInstanceId": null,
+  "listenerId": "session-unstable-fixture-pid-5002-listener-tcp-127-0-0-1-9223",
+  "identity": {
+    "status": "unstable",
+    "scope": "session-listener",
+    "processInstanceId": null,
+    "listenerId": "session-unstable-fixture-pid-5002-listener-tcp-127-0-0-1-9223",
+    "listenerKey": "listener-tcp-127-0-0-1-9223",
+    "pid": 5002,
+    "createdAt": null,
+    "source": "session-scoped-missing-creation-time",
+    "rawSource": "fixture",
+    "evidence": [
+      "stable process identity unavailable because creation time is missing or invalid",
+      "identifier is session-scoped and must not be used as durable process identity"
+    ]
+  }
+}

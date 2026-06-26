@@ -1,0 +1,58 @@
+[
+  {
+    "ProcessId": 4000,
+    "ParentProcessId": 3000,
+    "Name": "Code.exe",
+    "CommandLine": "Code.exe --folder-uri %USERPROFILE%\\code\\demo-app --token [REDACTED]",
+    "ExecutablePath": "%USERPROFILE%\\AppData\\Local\\Programs\\Microsoft VS Code\\Code.exe",
+    "CreationDate": "20260616110000.000000-300"
+  },
+  {
+    "ProcessId": 4050,
+    "ParentProcessId": 4000,
+    "Name": "powershell.exe",
+    "CommandLine": "powershell.exe -NoProfile npm run dev --password [REDACTED]",
+    "ExecutablePath": "C:\\Windows\\System32\\WindowsPowerShell\\v1.0\\powershell.exe",
+    "CreationDate": "20260616110500.000000-300"
+  },
+  {
+    "ProcessId": 4100,
+    "ParentProcessId": 4050,
+    "Name": "npm.cmd",
+    "CommandLine": "npm run dev --token [REDACTED]",
+    "ExecutablePath": "C:\\Program Files\\nodejs\\npm.cmd",
+    "CreationDate": "20260616111000.000000-300"
+  },
+  {
+    "ProcessId": 4242,
+    "ParentProcessId": 4100,
+    "Name": "node.exe",
+    "CommandLine": "node %USERPROFILE%\\code\\demo-app\\node_modules\\vite\\bin\\vite.js --host 127.0.0.1 --token [REDACTED]",
+    "ExecutablePath": "C:\\Program Files\\nodejs\\node.exe",
+    "CreationDate": "20260616120000.000000-300"
+  },
+  {
+    "ProcessId": 1111,
+    "ParentProcessId": 500,
+    "Name": "postgres.exe",
+    "CommandLine": "postgres -D %USERPROFILE%\\code\\db",
+    "ExecutablePath": "C:\\Program Files\\PostgreSQL\\17\\bin\\postgres.exe",
+    "CreationDate": "20260616090000.000000-300"
+  },
+  {
+    "ProcessId": 9999,
+    "ParentProcessId": 500,
+    "Name": "chrome.exe",
+    "CommandLine": "chrome.exe --remote-debugging-port=9222",
+    "ExecutablePath": "C:\\Program Files\\Google\\Chrome\\Application\\chrome.exe",
+    "CreationDate": "20260616110000.000000-300"
+  },
+  {
+    "ProcessId": 4,
+    "ParentProcessId": 0,
+    "Name": "System",
+    "CommandLine": null,
+    "ExecutablePath": null,
+    "CreationDate": "20260616000000.000000-300"
+  }
+]

@@ -1,0 +1,129 @@
+{
+  "version": 1,
+  "devRoots": [
+    "%USERPROFILE%\\Desktop",
+    "%USERPROFILE%\\Documents\\GitHub",
+    "%USERPROFILE%\\Projects",
+    "%USERPROFILE%\\dev",
+    "%USERPROFILE%\\code"
+  ],
+  "protectedProcesses": [
+    "System",
+    "Idle",
+    "Registry",
+    "svchost.exe",
+    "csrss.exe",
+    "wininit.exe",
+    "winlogon.exe",
+    "services.exe",
+    "lsass.exe",
+    "explorer.exe",
+    "dwm.exe",
+    "SearchIndexer.exe",
+    "MsMpEng.exe",
+    "SecurityHealthService.exe",
+    "OneDrive.exe",
+    "Dropbox.exe",
+    "NVIDIA*",
+    "AMD*",
+    "Intel*",
+    "Audio*"
+  ],
+  "devRuntimes": [
+    "node.exe",
+    "npm.cmd",
+    "pnpm.cmd",
+    "yarn.cmd",
+    "bun.exe",
+    "deno.exe",
+    "python.exe",
+    "python3.exe",
+    "py.exe",
+    "uvicorn.exe",
+    "flask.exe",
+    "django-admin.exe",
+    "dotnet.exe",
+    "java.exe",
+    "ruby.exe",
+    "php.exe",
+    "ollama.exe"
+  ],
+  "commonDevPorts": [
+    3000,
+    3001,
+    5173,
+    5174,
+    8000,
+    8080,
+    8888,
+    9000,
+    1313,
+    31313
+  ],
+  "httpProbeTimeoutMs": 750,
+  "httpProbeMaxRedirects": 2,
+  "processTree": {
+    "maxDepth": 5
+  },
+  "lifecycle": {
+    "longRunningDevServerMs": 14400000,
+    "staleCandidateMinimumScore": 60,
+    "categoryExclusions": [
+      "database",
+      "local-ai-server",
+      "browser-helper",
+      "editor-helper",
+      "system-or-protected",
+      "unknown-listener"
+    ]
+  },
+  "history": {
+    "enabled": true,
+    "storagePath": ".localhost-watchdog/history.json",
+    "maxSnapshots": 25,
+    "maxHistoryAgeMs": 1209600000,
+    "maxProcessRecords": 500
+  },
+  "protectedPorts": [
+    135,
+    137,
+    138,
+    139,
+    445,
+    3389,
+    5985,
+    5986
+  ],
+  "protectedPortRanges": [
+    {
+      "from": 0,
+      "to": 1023,
+      "reason": "well-known system port range"
+    }
+  ],
+  "bulkStopExcludedCategories": [
+    "database",
+    "local-ai-server",
+    "browser-helper",
+    "editor-helper",
+    "system-or-protected",
+    "unknown-listener"
+  ],
+  "redaction": {
+    "redactCommandLinesBeforeOutput": true,
+    "sensitiveKeyFragments": [
+      "api_key",
+      "apikey",
+      "auth",
+      "client_secret",
+      "credential",
+      "key",
+      "password",
+      "passwd",
+      "secret",
+      "session",
+      "token"
+    ],
+    "replacement": "[REDACTED]"
+  }
+}

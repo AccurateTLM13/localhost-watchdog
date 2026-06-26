@@ -1,0 +1,27 @@
+{
+  "id": "session-unstable-fixture-pid-6001-listener-tcp-127-0-0-1-63342",
+  "pid": 6001,
+  "port": 63342,
+  "host": "127.0.0.1",
+  "url": "http://localhost:63342",
+  "processName": "Code.exe",
+  "commandLine": "Code.exe --inspect=63342",
+  "executablePath": "C:\\Users\\JP\\AppData\\Local\\Programs\\Microsoft VS Code\\Code.exe",
+  "processInstanceId": null,
+  "listenerId": "session-unstable-fixture-pid-6001-listener-tcp-127-0-0-1-63342",
+  "identity": {
+    "status": "unstable",
+    "scope": "session-listener",
+    "processInstanceId": null,
+    "listenerId": "session-unstable-fixture-pid-6001-listener-tcp-127-0-0-1-63342",
+    "listenerKey": "listener-tcp-127-0-0-1-63342",
+    "pid": 6001,
+    "createdAt": null,
+    "source": "session-scoped-missing-creation-time",
+    "rawSource": "fixture",
+    "evidence": [
+      "stable process identity unavailable because creation time is missing or invalid",
+      "identifier is session-scoped and must not be used as durable process identity"
+    ]
+  }
+}
