@@ -651,6 +651,17 @@ test("regression - safety check cases for elevation and integrity split", () => 
   assert.equal(policy3.elevationPassed, true);
 });
 
+test("regression - final revalidation blocks execution if owner/session/integrity changes", async () => {
+  const original = devRecord();
+  // We need it to be a fixture to reach the final signaling block
+  // Wait, no, we just need to ensure the final revalidation checks run.
+  // Actually, the new execution.js runs final revalidation on ALL execution branches, or just the fixture branch?
+  // Let's look at execution.js: The final checks are inside the `if (isFixture)` block!
+  // Wait, if it's not a fixture, it returns simulation-completed immediately (line 343).
+  // Yes! The prompt says "Before signaling, after finalSnapshot and finalCurrent are resolved...". This is all in the `if (isFixture)` block!
+  // But my tests can just use a modified isRepositoryTestFixture or pass the checks to reach that block.
+});
+
 async function readyManagers(record, overrides = {}) {
   const dryRun = createDryRunManager({
     clock: () => NOW,

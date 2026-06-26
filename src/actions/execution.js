@@ -201,29 +201,22 @@ function createExecutionManager(options = {}) {
           finalState: "failed",
           errorCode: "REVALIDATION_UNAVAILABLE"
         };
-        try { auditWriter(failedRecord); } catch {}
+        try { auditWriter(failedRecord); } catch { return errorResponse("AUDIT_WRITE_FAILED", "Audit logging failed during final revalidation."); }
         return errorResponse("REVALIDATION_UNAVAILABLE", "Scanner revalidation was unavailable before signaling.");
       }
 
       const finalCurrent = findCurrentRecord(entry.originalRequest, finalSnapshot);
       if (!finalCurrent) {
         const portOwner = finalSnapshot.servers && finalSnapshot.servers.find((record) => Number(record.port) === Number(entry.originalRequest.expected.port));
-        if (portOwner) {
-          const failedRecord = {
-            ...auditRecordInput,
-            finalState: "failed",
-            errorCode: "PORT_OWNER_CHANGED"
-          };
-          try { auditWriter(failedRecord); } catch {}
-          return errorResponse("PORT_OWNER_CHANGED", "The port ownership has changed.");
-        }
+        const errorCode = portOwner ? "PORT_OWNER_CHANGED" : "ALREADY_EXITED";
+        const msg = portOwner ? "The port ownership has changed." : "The process has already exited.";
         const failedRecord = {
           ...auditRecordInput,
           finalState: "failed",
-          errorCode: "ALREADY_EXITED"
+          errorCode
         };
-        try { auditWriter(failedRecord); } catch {}
-        return errorResponse("ALREADY_EXITED", "The process has already exited.");
+        try { auditWriter(failedRecord); } catch { return errorResponse("AUDIT_WRITE_FAILED", "Audit logging failed during final revalidation."); }
+        return errorResponse(errorCode, msg);
       }
 
       if (finalCurrent.processInstanceId !== entry.processInstanceId) {
@@ -232,7 +225,7 @@ function createExecutionManager(options = {}) {
           finalState: "failed",
           errorCode: "CREATION_TIME_MISMATCH"
         };
-        try { auditWriter(failedRecord); } catch {}
+        try { auditWriter(failedRecord); } catch { return errorResponse("AUDIT_WRITE_FAILED", "Audit logging failed during final revalidation."); }
         return errorResponse("CREATION_TIME_MISMATCH", "The process creation time changed.");
       }
 
@@ -242,7 +235,7 @@ function createExecutionManager(options = {}) {
           finalState: "failed",
           errorCode: "PORT_OWNER_CHANGED"
         };
-        try { auditWriter(failedRecord); } catch {}
+        try { auditWriter(failedRecord); } catch { return errorResponse("AUDIT_WRITE_FAILED", "Audit logging failed during final revalidation."); }
         return errorResponse("PORT_OWNER_CHANGED", "The port ownership has changed.");
       }
 
@@ -252,8 +245,42 @@ function createExecutionManager(options = {}) {
           finalState: "failed",
           errorCode: "PROCESS_NAME_CHANGED"
         };
-        try { auditWriter(failedRecord); } catch {}
+        try { auditWriter(failedRecord); } catch { return errorResponse("AUDIT_WRITE_FAILED", "Audit logging failed during final revalidation."); }
         return errorResponse("PROCESS_NAME_CHANGED", "The process name has changed.");
+      }
+
+      const finalRecheck = evaluateDryRunFromSnapshot(entry.originalRequest, finalSnapshot, { now, randomId, watchdogPrivilege });
+      if (!finalRecheck.passed) {
+        const firstBlocker = finalRecheck.blockers && finalRecheck.blockers[0];
+        let code = firstBlocker ? firstBlocker.code : "REVALIDATION_BLOCKED";
+        let message = firstBlocker ? firstBlocker.message : "Revalidation blocked execution.";
+        if (code === "OWNER_POLICY") code = "OWNER_BLOCKED";
+        if (code === "ELEVATION_POLICY") code = "ELEVATION_BLOCKED";
+        
+        const failedRecord = { ...auditRecordInput, finalState: "failed", errorCode: code };
+        try { auditWriter(failedRecord); } catch { return errorResponse("AUDIT_WRITE_FAILED", "Audit logging failed during final revalidation."); }
+        
+        const policy = evaluateConfirmationPolicy(finalCurrent, { watchdogPrivilege });
+        return errorResponse(code, message, { failureReason: policy.failureReason, policy });
+      }
+
+      const finalPolicy = evaluateConfirmationPolicy(finalCurrent, { watchdogPrivilege });
+      if (!finalPolicy.ownerPassed) {
+        const failedRecord = { ...auditRecordInput, finalState: "failed", errorCode: "OWNER_BLOCKED" };
+        try { auditWriter(failedRecord); } catch { return errorResponse("AUDIT_WRITE_FAILED", "Audit logging failed during final revalidation."); }
+        return errorResponse("OWNER_BLOCKED", finalPolicy.ownerMessage, { failureReason: finalPolicy.failureReason, policy: finalPolicy });
+      }
+      if (!finalPolicy.elevationPassed) {
+        const failedRecord = { ...auditRecordInput, finalState: "failed", errorCode: "ELEVATION_BLOCKED" };
+        try { auditWriter(failedRecord); } catch { return errorResponse("AUDIT_WRITE_FAILED", "Audit logging failed during final revalidation."); }
+        return errorResponse("ELEVATION_BLOCKED", finalPolicy.elevationMessage, { failureReason: finalPolicy.failureReason, policy: finalPolicy });
+      }
+
+      const isFinalFixture = await isRepositoryTestFixture(finalCurrent.pid, finalCurrent.processName, entry.originalRequest.fixtureToken);
+      if (!isFinalFixture) {
+        const failedRecord = { ...auditRecordInput, finalState: "failed", errorCode: "IDENTITY_MISMATCH" };
+        try { auditWriter(failedRecord); } catch { return errorResponse("AUDIT_WRITE_FAILED", "Audit logging failed during final revalidation."); }
+        return errorResponse("IDENTITY_MISMATCH", "Final process identity does not match the test fixture allowlist.");
       }
 
       // 9c. Signal the process (using SIGINT gracefully)
@@ -269,7 +296,7 @@ function createExecutionManager(options = {}) {
           finalState: "failed",
           errorCode: "SIGNAL_FAILED"
         };
-        try { auditWriter(failedRecord); } catch {}
+        try { auditWriter(failedRecord); } catch { return errorResponse("AUDIT_WRITE_FAILED", "Audit logging failed after signal failure."); }
         return errorResponse("SIGNAL_FAILED", `Failed to signal process: ${killError.message}`);
       }
 
