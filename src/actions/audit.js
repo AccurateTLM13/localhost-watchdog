@@ -202,8 +202,8 @@ function buildExecutionAuditRecord(input = {}) {
     },
     finalState: safeValue(input.finalState),
     errorCode: safeValue(input.errorCode),
-    actionExecuted: false,
-    executionAuthorized: false
+    actionExecuted: Boolean(input.actionExecuted),
+    executionAuthorized: Boolean(input.executionAuthorized)
   };
 }
 
