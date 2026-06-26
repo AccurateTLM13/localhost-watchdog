@@ -4,6 +4,7 @@ const crypto = require("node:crypto");
 const { execFile } = require("node:child_process");
 const { promisify } = require("node:util");
 const net = require("node:net");
+const path = require("node:path");
 const execFileAsync = promisify(execFile);
 
 const { writeExecutionAudit } = require("./audit");
@@ -159,7 +160,7 @@ function createExecutionManager(options = {}) {
 
     // 9. Write Execution Audit (failure blocks execution)
     const executionRequestId = `actreq-${randomId(16)}`;
-    const isFixture = await isRepositoryTestFixture(current.pid, current.processName);
+    const isFixture = await isRepositoryTestFixture(current.pid, current.processName, entry.originalRequest.fixtureToken);
 
     if (isFixture) {
       // 9a. Write initial attempt record (failure blocks execution)
@@ -256,10 +257,12 @@ function createExecutionManager(options = {}) {
       }
 
       // 9c. Signal the process (using SIGINT gracefully)
-      const targetPid = current.pid;
+      const targetPid = finalCurrent.pid;
+      let signalSent = false;
       try {
         const pKill = process.kill;
         pKill(targetPid, "SIGINT");
+        signalSent = true;
       } catch (killError) {
         const failedRecord = {
           ...auditRecordInput,
@@ -274,68 +277,69 @@ function createExecutionManager(options = {}) {
       const timeoutMs = 5000;
       const pollIntervalMs = 200;
       const startTime = Date.now();
-      let exited = false;
+      let processExited = false;
+      let portReleased = false;
       const port = Number(entry.originalRequest.expected.port);
+      const host = entry.originalRequest.expected.host || "127.0.0.1";
 
       while (Date.now() - startTime < timeoutMs) {
-        const pidRunning = isProcessRunning(targetPid);
-        const portFree = await isPortFree(port);
-        if (!pidRunning && portFree) {
-          exited = true;
+        if (!processExited) {
+          processExited = !isProcessRunning(targetPid);
+        }
+        if (!portReleased) {
+          portReleased = await isPortFree(port, host);
+        }
+        if (processExited && portReleased) {
           break;
         }
         await new Promise((r) => setTimeout(r, pollIntervalMs));
       }
 
-      if (exited) {
-        const successRecord = {
-          ...auditRecordInput,
-          finalState: "success",
-          actionExecuted: true,
-          executionAuthorized: true
-        };
-        try { auditWriter(successRecord); } catch {}
+      const success = processExited && portReleased;
+      const finalState = success ? "success" : "timeout";
 
-        const result = {
-          ok: true,
-          schemaVersion: "localhost-watchdog.execution-result.v1",
-          actionRequestId: executionRequestId,
-          state: "success",
-          message: "Process stopped successfully.",
-          actionExecuted: true,
-          executionAuthorized: true
-        };
+      const finalRecord = {
+        ...auditRecordInput,
+        finalState: finalState,
+        errorCode: success ? null : "EXECUTION_TIMEOUT",
+        actionExecuted: signalSent,
+        executionAuthorized: true
+      };
 
-        executions.set(executionRequestId, result);
-        if (idempotencyKey) {
-          idempotency.set(idempotencyKey, executionRequestId);
-        }
-        return result;
-      } else {
-        const failedRecord = {
-          ...auditRecordInput,
-          finalState: "failed",
-          errorCode: "EXECUTION_TIMEOUT",
-          actionExecuted: false,
-          executionAuthorized: true
-        };
-        try { auditWriter(failedRecord); } catch {}
-
-        const result = {
-          ok: false,
-          code: "EXECUTION_TIMEOUT",
-          category: "execution",
-          message: "The process did not exit within the timeout window.",
-          actionExecuted: false,
-          executionAuthorized: true
-        };
-
-        executions.set(executionRequestId, result);
-        if (idempotencyKey) {
-          idempotency.set(idempotencyKey, executionRequestId);
-        }
-        return result;
+      let auditFailed = false;
+      try {
+        auditWriter(finalRecord);
+      } catch (auditError) {
+        auditFailed = true;
       }
+
+      const result = {
+        ok: success && !auditFailed,
+        schemaVersion: "localhost-watchdog.execution-result.v1",
+        actionRequestId: executionRequestId,
+        state: finalState,
+        code: undefined,
+        message: "Process stopped successfully.",
+        actionExecuted: signalSent,
+        executionAuthorized: true,
+        details: { signalSent, processExited, portReleased }
+      };
+
+      if (auditFailed) {
+        result.ok = false;
+        result.code = "AUDIT_WRITE_FAILED";
+        result.message = "Process signaled, but final audit record failed to write.";
+      } else if (!success) {
+        result.ok = false;
+        result.code = "EXECUTION_TIMEOUT";
+        result.message = "The process did not exit or release the port within the timeout window.";
+      }
+
+      executions.set(executionRequestId, result);
+      if (idempotencyKey) {
+        idempotency.set(idempotencyKey, executionRequestId);
+      }
+      return result;
     } else {
       // 10. Simulation logic for non-fixtures (keeps actionExecuted:false and executionAuthorized:false)
       const auditRecordInput = {
@@ -477,25 +481,41 @@ async function getProcessInfo(pid) {
   }
 }
 
-async function isRepositoryTestFixture(pid, processName) {
+async function isRepositoryTestFixture(pid, processName, expectedToken) {
   const name = String(processName || "").toLowerCase();
   if (name !== "node.exe" && name !== "node") {
+    console.log("Failed on name:", name);
     return false;
   }
   const info = await getProcessInfo(pid);
-  if (!info) return false;
+  if (!info) {
+    console.log("Failed on info for pid:", pid);
+    return false;
+  }
 
-  const cmdLine = String(info.commandLine).toLowerCase();
-  const execPath = String(info.executablePath).toLowerCase();
+  const cmdLine = String(info.commandLine);
 
-  const repoRoot = process.cwd().toLowerCase();
-  const isUnderRepo = cmdLine.includes(repoRoot) || execPath.includes(repoRoot);
-  const isFixture = cmdLine.includes("localhost-watchdog-test-fixture") ||
-                    cmdLine.includes("test-fixture-server") ||
-                    cmdLine.includes("test\\fixtures") ||
-                    cmdLine.includes("test/fixtures");
+  if (!expectedToken || typeof expectedToken !== "string") {
+    console.log("Failed on token:", expectedToken);
+    return false;
+  }
 
-  return isUnderRepo && isFixture;
+  const repoRoot = process.cwd();
+  const allowlistedPath = path.join(repoRoot, "test", "fixtures", "server.js");
+  
+  const normalizedCmd = cmdLine.replace(/\\/g, '/').toLowerCase();
+  const normalizedAllowlist = allowlistedPath.replace(/\\/g, '/').toLowerCase();
+  
+  if (!normalizedCmd.includes(normalizedAllowlist)) {
+    console.log("Failed on allowlist. normalizedCmd:", normalizedCmd, "normalizedAllowlist:", normalizedAllowlist);
+    return false;
+  }
+  if (!cmdLine.includes(expectedToken)) {
+    console.log("Failed on token include. cmdLine:", cmdLine, "token:", expectedToken);
+    return false;
+  }
+
+  return true;
 }
 
 function isProcessRunning(pid) {
@@ -508,7 +528,7 @@ function isProcessRunning(pid) {
   }
 }
 
-function isPortFree(port) {
+function isPortFree(port, host) {
   return new Promise((resolve) => {
     const server = net.createServer();
     server.once("error", () => {
@@ -519,7 +539,7 @@ function isPortFree(port) {
         resolve(true);
       });
     });
-    server.listen(port, "127.0.0.1");
+    server.listen(port, host || "127.0.0.1");
   });
 }
 
