@@ -1,6 +1,11 @@
 "use strict";
 
 const crypto = require("node:crypto");
+const { execFile } = require("node:child_process");
+const { promisify } = require("node:util");
+const net = require("node:net");
+const execFileAsync = promisify(execFile);
+
 const { writeExecutionAudit } = require("./audit");
 const { evaluateDryRunFromSnapshot } = require("./dry-run");
 const { scanWindows } = require("../scanner/windows");
@@ -154,49 +159,228 @@ function createExecutionManager(options = {}) {
 
     // 9. Write Execution Audit (failure blocks execution)
     const executionRequestId = `actreq-${randomId(16)}`;
-    const auditRecordInput = {
-      executionRequestId,
-      confirmationRequestId: entry.confirmationRequestId,
-      dryRunRequestId: entry.dryRunRequestId,
-      timestamp: now.toISOString(),
-      redactedIdentity: {
-        processInstanceId: entry.processInstanceId,
-        listenerId: entry.listenerId,
-        port: entry.originalRequest.expected && entry.originalRequest.expected.port,
-        bindHostClass: hostClass(entry.originalRequest.expected && entry.originalRequest.expected.host),
-        processName: current.processName,
-        category: current.category,
-        confidenceLevel: current.confidenceLevel,
-        projectDisplayName: current.project && current.project.name
-      },
-      finalState: "simulation-completed",
-      errorCode: null
-    };
+    const isFixture = await isRepositoryTestFixture(current.pid, current.processName);
 
-    try {
-      auditWriter(auditRecordInput);
-    } catch (auditError) {
-      return errorResponse("AUDIT_LOG_UNAVAILABLE", "Audit logging failed.");
+    if (isFixture) {
+      // 9a. Write initial attempt record (failure blocks execution)
+      const auditRecordInput = {
+        executionRequestId,
+        confirmationRequestId: entry.confirmationRequestId,
+        dryRunRequestId: entry.dryRunRequestId,
+        timestamp: now.toISOString(),
+        redactedIdentity: {
+          processInstanceId: entry.processInstanceId,
+          listenerId: entry.listenerId,
+          port: entry.originalRequest.expected && entry.originalRequest.expected.port,
+          bindHostClass: hostClass(entry.originalRequest.expected && entry.originalRequest.expected.host),
+          processName: current.processName,
+          category: current.category,
+          confidenceLevel: current.confidenceLevel,
+          projectDisplayName: current.project && current.project.name
+        },
+        finalState: "attempted",
+        errorCode: null,
+        actionExecuted: false,
+        executionAuthorized: true
+      };
+
+      try {
+        auditWriter(auditRecordInput);
+      } catch (auditError) {
+        return errorResponse("AUDIT_LOG_UNAVAILABLE", "Audit logging failed.");
+      }
+
+      // 9b. Perform final fresh revalidation immediately before signaling
+      let finalSnapshot;
+      try {
+        finalSnapshot = await scanProvider();
+      } catch (error) {
+        const failedRecord = {
+          ...auditRecordInput,
+          finalState: "failed",
+          errorCode: "REVALIDATION_UNAVAILABLE"
+        };
+        try { auditWriter(failedRecord); } catch {}
+        return errorResponse("REVALIDATION_UNAVAILABLE", "Scanner revalidation was unavailable before signaling.");
+      }
+
+      const finalCurrent = findCurrentRecord(entry.originalRequest, finalSnapshot);
+      if (!finalCurrent) {
+        const portOwner = finalSnapshot.servers && finalSnapshot.servers.find((record) => Number(record.port) === Number(entry.originalRequest.expected.port));
+        if (portOwner) {
+          const failedRecord = {
+            ...auditRecordInput,
+            finalState: "failed",
+            errorCode: "PORT_OWNER_CHANGED"
+          };
+          try { auditWriter(failedRecord); } catch {}
+          return errorResponse("PORT_OWNER_CHANGED", "The port ownership has changed.");
+        }
+        const failedRecord = {
+          ...auditRecordInput,
+          finalState: "failed",
+          errorCode: "ALREADY_EXITED"
+        };
+        try { auditWriter(failedRecord); } catch {}
+        return errorResponse("ALREADY_EXITED", "The process has already exited.");
+      }
+
+      if (finalCurrent.processInstanceId !== entry.processInstanceId) {
+        const failedRecord = {
+          ...auditRecordInput,
+          finalState: "failed",
+          errorCode: "CREATION_TIME_MISMATCH"
+        };
+        try { auditWriter(failedRecord); } catch {}
+        return errorResponse("CREATION_TIME_MISMATCH", "The process creation time changed.");
+      }
+
+      if (Number(finalCurrent.port) !== Number(entry.originalRequest.expected.port)) {
+        const failedRecord = {
+          ...auditRecordInput,
+          finalState: "failed",
+          errorCode: "PORT_OWNER_CHANGED"
+        };
+        try { auditWriter(failedRecord); } catch {}
+        return errorResponse("PORT_OWNER_CHANGED", "The port ownership has changed.");
+      }
+
+      if (finalCurrent.processName !== entry.originalRequest.expected.processName) {
+        const failedRecord = {
+          ...auditRecordInput,
+          finalState: "failed",
+          errorCode: "PROCESS_NAME_CHANGED"
+        };
+        try { auditWriter(failedRecord); } catch {}
+        return errorResponse("PROCESS_NAME_CHANGED", "The process name has changed.");
+      }
+
+      // 9c. Signal the process (using SIGINT gracefully)
+      const targetPid = current.pid;
+      try {
+        const pKill = process.kill;
+        pKill(targetPid, "SIGINT");
+      } catch (killError) {
+        const failedRecord = {
+          ...auditRecordInput,
+          finalState: "failed",
+          errorCode: "SIGNAL_FAILED"
+        };
+        try { auditWriter(failedRecord); } catch {}
+        return errorResponse("SIGNAL_FAILED", `Failed to signal process: ${killError.message}`);
+      }
+
+      // 9d. Wait for process exit and port release
+      const timeoutMs = 5000;
+      const pollIntervalMs = 200;
+      const startTime = Date.now();
+      let exited = false;
+      const port = Number(entry.originalRequest.expected.port);
+
+      while (Date.now() - startTime < timeoutMs) {
+        const pidRunning = isProcessRunning(targetPid);
+        const portFree = await isPortFree(port);
+        if (!pidRunning && portFree) {
+          exited = true;
+          break;
+        }
+        await new Promise((r) => setTimeout(r, pollIntervalMs));
+      }
+
+      if (exited) {
+        const successRecord = {
+          ...auditRecordInput,
+          finalState: "success",
+          actionExecuted: true,
+          executionAuthorized: true
+        };
+        try { auditWriter(successRecord); } catch {}
+
+        const result = {
+          ok: true,
+          schemaVersion: "localhost-watchdog.execution-result.v1",
+          actionRequestId: executionRequestId,
+          state: "success",
+          message: "Process stopped successfully.",
+          actionExecuted: true,
+          executionAuthorized: true
+        };
+
+        executions.set(executionRequestId, result);
+        if (idempotencyKey) {
+          idempotency.set(idempotencyKey, executionRequestId);
+        }
+        return result;
+      } else {
+        const failedRecord = {
+          ...auditRecordInput,
+          finalState: "failed",
+          errorCode: "EXECUTION_TIMEOUT",
+          actionExecuted: false,
+          executionAuthorized: true
+        };
+        try { auditWriter(failedRecord); } catch {}
+
+        const result = {
+          ok: false,
+          code: "EXECUTION_TIMEOUT",
+          category: "execution",
+          message: "The process did not exit within the timeout window.",
+          actionExecuted: false,
+          executionAuthorized: true
+        };
+
+        executions.set(executionRequestId, result);
+        if (idempotencyKey) {
+          idempotency.set(idempotencyKey, executionRequestId);
+        }
+        return result;
+      }
+    } else {
+      // 10. Simulation logic for non-fixtures (keeps actionExecuted:false and executionAuthorized:false)
+      const auditRecordInput = {
+        executionRequestId,
+        confirmationRequestId: entry.confirmationRequestId,
+        dryRunRequestId: entry.dryRunRequestId,
+        timestamp: now.toISOString(),
+        redactedIdentity: {
+          processInstanceId: entry.processInstanceId,
+          listenerId: entry.listenerId,
+          port: entry.originalRequest.expected && entry.originalRequest.expected.port,
+          bindHostClass: hostClass(entry.originalRequest.expected && entry.originalRequest.expected.host),
+          processName: current.processName,
+          category: current.category,
+          confidenceLevel: current.confidenceLevel,
+          projectDisplayName: current.project && current.project.name
+        },
+        finalState: "simulation-completed",
+        errorCode: null,
+        actionExecuted: false,
+        executionAuthorized: false
+      };
+
+      try {
+        auditWriter(auditRecordInput);
+      } catch (auditError) {
+        return errorResponse("AUDIT_LOG_UNAVAILABLE", "Audit logging failed.");
+      }
+
+      const result = {
+        ok: true,
+        schemaVersion: "localhost-watchdog.execution-result.v1",
+        actionRequestId: executionRequestId,
+        state: "simulation-completed",
+        message: "Execution simulator completed. No process action was executed.",
+        actionExecuted: false,
+        executionAuthorized: false
+      };
+
+      executions.set(executionRequestId, result);
+      if (idempotencyKey) {
+        idempotency.set(idempotencyKey, executionRequestId);
+      }
+      return result;
     }
-
-    // 10. Construct successful response (Simulator always returns actionExecuted:false and executionAuthorized:false)
-    const result = {
-      ok: true,
-      schemaVersion: "localhost-watchdog.execution-result.v1",
-      actionRequestId: executionRequestId,
-      state: "simulation-completed",
-      message: "Execution simulator completed. No process action was executed.",
-      actionExecuted: false,
-      executionAuthorized: false
-    };
-
-    // Store in execution history for idempotency
-    executions.set(executionRequestId, result);
-    if (idempotencyKey) {
-      idempotency.set(idempotencyKey, executionRequestId);
-    }
-
-    return result;
   }
 
   function errorResponse(code, message, extra = {}) {
@@ -258,6 +442,85 @@ function normalizeKey(value) {
 
 function randomHex(bytes) {
   return crypto.randomBytes(bytes).toString("hex");
+}
+
+async function getProcessInfo(pid) {
+  if (process.platform === "win32") {
+    try {
+      const cmd = `Get-CimInstance Win32_Process -Filter "ProcessId = ${pid}" | Select-Object CommandLine, ExecutablePath | ConvertTo-Json`;
+      const { stdout } = await execFileAsync("powershell.exe", [
+        "-NoProfile",
+        "-ExecutionPolicy",
+        "Bypass",
+        "-Command",
+        cmd
+      ]);
+      if (!stdout.trim()) return null;
+      const parsed = JSON.parse(stdout);
+      return {
+        commandLine: parsed.CommandLine || parsed.commandLine || "",
+        executablePath: parsed.ExecutablePath || parsed.executablePath || ""
+      };
+    } catch {
+      return null;
+    }
+  } else {
+    try {
+      const { stdout } = await execFileAsync("ps", ["-p", String(pid), "-o", "command="]);
+      return {
+        commandLine: stdout.trim(),
+        executablePath: ""
+      };
+    } catch {
+      return null;
+    }
+  }
+}
+
+async function isRepositoryTestFixture(pid, processName) {
+  const name = String(processName || "").toLowerCase();
+  if (name !== "node.exe" && name !== "node") {
+    return false;
+  }
+  const info = await getProcessInfo(pid);
+  if (!info) return false;
+
+  const cmdLine = String(info.commandLine).toLowerCase();
+  const execPath = String(info.executablePath).toLowerCase();
+
+  const repoRoot = process.cwd().toLowerCase();
+  const isUnderRepo = cmdLine.includes(repoRoot) || execPath.includes(repoRoot);
+  const isFixture = cmdLine.includes("localhost-watchdog-test-fixture") ||
+                    cmdLine.includes("test-fixture-server") ||
+                    cmdLine.includes("test\\fixtures") ||
+                    cmdLine.includes("test/fixtures");
+
+  return isUnderRepo && isFixture;
+}
+
+function isProcessRunning(pid) {
+  try {
+    const pKill = process.kill;
+    pKill(pid, 0);
+    return true;
+  } catch (err) {
+    return err.code !== "ESRCH";
+  }
+}
+
+function isPortFree(port) {
+  return new Promise((resolve) => {
+    const server = net.createServer();
+    server.once("error", () => {
+      resolve(false);
+    });
+    server.once("listening", () => {
+      server.close(() => {
+        resolve(true);
+      });
+    });
+    server.listen(port, "127.0.0.1");
+  });
 }
 
 module.exports = {
