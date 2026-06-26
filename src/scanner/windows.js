@@ -69,7 +69,8 @@ public class WinSecurity {
     private static extern IntPtr GetSidSubAuthorityCount(IntPtr pSid);
 
     public struct ProcessSecurityInfo {
-        public bool Success;
+        public bool ElevationAvailable;
+        public bool IntegrityAvailable;
         public int Elevated;
         public int IntegrityLevel;
         public string Error;
@@ -77,67 +78,76 @@ public class WinSecurity {
 
     public static ProcessSecurityInfo GetProcessSecurity(int pid) {
         ProcessSecurityInfo info = new ProcessSecurityInfo();
-        info.Success = false;
+        info.ElevationAvailable = false;
+        info.IntegrityAvailable = false;
         info.Elevated = 0;
         info.IntegrityLevel = 0;
         info.Error = "";
 
-        IntPtr hProcess = OpenProcess(PROCESS_QUERY_LIMITED_INFORMATION, false, pid);
-        if (hProcess == IntPtr.Zero) {
-            info.Error = "OpenProcessFailed: " + Marshal.GetLastWin32Error();
-            return info;
-        }
-
+        IntPtr hProcess = IntPtr.Zero;
         IntPtr hToken = IntPtr.Zero;
-        if (!OpenProcessToken(hProcess, TOKEN_QUERY, out hToken)) {
-            info.Error = "OpenProcessTokenFailed: " + Marshal.GetLastWin32Error();
-            CloseHandle(hProcess);
-            return info;
-        }
 
-        // Elevation
-        int elevationSize = Marshal.SizeOf(typeof(TOKEN_ELEVATION));
-        IntPtr pElevation = Marshal.AllocHGlobal(elevationSize);
         try {
-            int returnLength;
-            if (GetTokenInformation(hToken, TokenElevation, pElevation, elevationSize, out returnLength)) {
-                TOKEN_ELEVATION elevationStruct = (TOKEN_ELEVATION)Marshal.PtrToStructure(pElevation, typeof(TOKEN_ELEVATION));
-                info.Elevated = elevationStruct.TokenIsElevated;
-                info.Success = true;
-            } else {
-                info.Error = "GetTokenInformationElevationFailed: " + Marshal.GetLastWin32Error();
+            hProcess = OpenProcess(PROCESS_QUERY_LIMITED_INFORMATION, false, pid);
+            if (hProcess == IntPtr.Zero) {
+                info.Error = "OpenProcessFailed: " + Marshal.GetLastWin32Error();
+                return info;
             }
-        } finally {
-            Marshal.FreeHGlobal(pElevation);
-        }
 
-        // Integrity Level
-        int returnLengthIL;
-        GetTokenInformation(hToken, TokenIntegrityLevel, IntPtr.Zero, 0, out returnLengthIL);
-        if (returnLengthIL > 0) {
-            IntPtr pIntegrity = Marshal.AllocHGlobal(returnLengthIL);
+            if (!OpenProcessToken(hProcess, TOKEN_QUERY, out hToken)) {
+                info.Error = "OpenProcessTokenFailed: " + Marshal.GetLastWin32Error();
+                return info;
+            }
+
+            // Elevation
+            int elevationSize = Marshal.SizeOf(typeof(TOKEN_ELEVATION));
+            IntPtr pElevation = Marshal.AllocHGlobal(elevationSize);
             try {
-                if (GetTokenInformation(hToken, TokenIntegrityLevel, pIntegrity, returnLengthIL, out returnLengthIL)) {
-                    TOKEN_MANDATORY_LABEL label = (TOKEN_MANDATORY_LABEL)Marshal.PtrToStructure(pIntegrity, typeof(TOKEN_MANDATORY_LABEL));
-                    IntPtr pSid = label.Label.Sid;
-                    IntPtr pSubAuthorityCount = GetSidSubAuthorityCount(pSid);
-                    if (pSubAuthorityCount != IntPtr.Zero) {
-                        int subAuthorityCount = Marshal.ReadByte(pSubAuthorityCount);
-                        if (subAuthorityCount > 0) {
-                            IntPtr pSubAuthority = GetSidSubAuthority(pSid, subAuthorityCount - 1);
-                            if (pSubAuthority != IntPtr.Zero) {
-                                info.IntegrityLevel = Marshal.ReadInt32(pSubAuthority);
+                int returnLength;
+                if (GetTokenInformation(hToken, TokenElevation, pElevation, elevationSize, out returnLength)) {
+                    TOKEN_ELEVATION elevationStruct = (TOKEN_ELEVATION)Marshal.PtrToStructure(pElevation, typeof(TOKEN_ELEVATION));
+                    info.Elevated = elevationStruct.TokenIsElevated;
+                    info.ElevationAvailable = true;
+                } else {
+                    info.Error = "GetTokenInformationElevationFailed: " + Marshal.GetLastWin32Error();
+                }
+            } finally {
+                Marshal.FreeHGlobal(pElevation);
+            }
+
+            // Integrity Level
+            int returnLengthIL;
+            GetTokenInformation(hToken, TokenIntegrityLevel, IntPtr.Zero, 0, out returnLengthIL);
+            if (returnLengthIL > 0) {
+                IntPtr pIntegrity = Marshal.AllocHGlobal(returnLengthIL);
+                try {
+                    if (GetTokenInformation(hToken, TokenIntegrityLevel, pIntegrity, returnLengthIL, out returnLengthIL)) {
+                        TOKEN_MANDATORY_LABEL label = (TOKEN_MANDATORY_LABEL)Marshal.PtrToStructure(pIntegrity, typeof(TOKEN_MANDATORY_LABEL));
+                        IntPtr pSid = label.Label.Sid;
+                        IntPtr pSubAuthorityCount = GetSidSubAuthorityCount(pSid);
+                        if (pSubAuthorityCount != IntPtr.Zero) {
+                            int subAuthorityCount = Marshal.ReadByte(pSubAuthorityCount);
+                            if (subAuthorityCount > 0) {
+                                IntPtr pSubAuthority = GetSidSubAuthority(pSid, subAuthorityCount - 1);
+                                if (pSubAuthority != IntPtr.Zero) {
+                                    info.IntegrityLevel = Marshal.ReadInt32(pSubAuthority);
+                                    info.IntegrityAvailable = true;
+                                }
                             }
                         }
                     }
+                } finally {
+                    Marshal.FreeHGlobal(pIntegrity);
                 }
-            } finally {
-                Marshal.FreeHGlobal(pIntegrity);
+            }
+        } finally {
+            if (hToken != IntPtr.Zero) {
+                CloseHandle(hToken);
+            }
+            if (hProcess != IntPtr.Zero) {
+                CloseHandle(hProcess);
             }
         }
-
-        CloseHandle(hToken);
-        CloseHandle(hProcess);
         return info;
     }
 }
@@ -175,8 +185,8 @@ foreach ($pid in $pids) {
         OwnerSid = $ownerSid
         OwnerUser = $ownerUser
         OwnerDomain = $ownerDomain
-        Elevated = if ($sec.Success) { $sec.Elevated -eq 1 } else { $null }
-        IntegrityLevel = if ($sec.Success) { $sec.IntegrityLevel } else { $null }
+        Elevated = if ($sec.ElevationAvailable) { $sec.Elevated -eq 1 } else { $null }
+        IntegrityLevel = if ($sec.IntegrityAvailable) { $sec.IntegrityLevel } else { $null }
         SecurityError = if ($secErr) { $secErr } else { $null }
     }
 }
@@ -232,7 +242,8 @@ public class WinSecurity {
     private static extern IntPtr GetSidSubAuthorityCount(IntPtr pSid);
 
     public struct ProcessSecurityInfo {
-        public bool Success;
+        public bool ElevationAvailable;
+        public bool IntegrityAvailable;
         public int Elevated;
         public int IntegrityLevel;
         public string Error;
@@ -240,67 +251,76 @@ public class WinSecurity {
 
     public static ProcessSecurityInfo GetProcessSecurity(int pid) {
         ProcessSecurityInfo info = new ProcessSecurityInfo();
-        info.Success = false;
+        info.ElevationAvailable = false;
+        info.IntegrityAvailable = false;
         info.Elevated = 0;
         info.IntegrityLevel = 0;
         info.Error = "";
 
-        IntPtr hProcess = OpenProcess(PROCESS_QUERY_LIMITED_INFORMATION, false, pid);
-        if (hProcess == IntPtr.Zero) {
-            info.Error = "OpenProcessFailed: " + Marshal.GetLastWin32Error();
-            return info;
-        }
-
+        IntPtr hProcess = IntPtr.Zero;
         IntPtr hToken = IntPtr.Zero;
-        if (!OpenProcessToken(hProcess, TOKEN_QUERY, out hToken)) {
-            info.Error = "OpenProcessTokenFailed: " + Marshal.GetLastWin32Error();
-            CloseHandle(hProcess);
-            return info;
-        }
 
-        // Elevation
-        int elevationSize = Marshal.SizeOf(typeof(TOKEN_ELEVATION));
-        IntPtr pElevation = Marshal.AllocHGlobal(elevationSize);
         try {
-            int returnLength;
-            if (GetTokenInformation(hToken, TokenElevation, pElevation, elevationSize, out returnLength)) {
-                TOKEN_ELEVATION elevationStruct = (TOKEN_ELEVATION)Marshal.PtrToStructure(pElevation, typeof(TOKEN_ELEVATION));
-                info.Elevated = elevationStruct.TokenIsElevated;
-                info.Success = true;
-            } else {
-                info.Error = "GetTokenInformationElevationFailed: " + Marshal.GetLastWin32Error();
+            hProcess = OpenProcess(PROCESS_QUERY_LIMITED_INFORMATION, false, pid);
+            if (hProcess == IntPtr.Zero) {
+                info.Error = "OpenProcessFailed: " + Marshal.GetLastWin32Error();
+                return info;
             }
-        } finally {
-            Marshal.FreeHGlobal(pElevation);
-        }
 
-        // Integrity Level
-        int returnLengthIL;
-        GetTokenInformation(hToken, TokenIntegrityLevel, IntPtr.Zero, 0, out returnLengthIL);
-        if (returnLengthIL > 0) {
-            IntPtr pIntegrity = Marshal.AllocHGlobal(returnLengthIL);
+            if (!OpenProcessToken(hProcess, TOKEN_QUERY, out hToken)) {
+                info.Error = "OpenProcessTokenFailed: " + Marshal.GetLastWin32Error();
+                return info;
+            }
+
+            // Elevation
+            int elevationSize = Marshal.SizeOf(typeof(TOKEN_ELEVATION));
+            IntPtr pElevation = Marshal.AllocHGlobal(elevationSize);
             try {
-                if (GetTokenInformation(hToken, TokenIntegrityLevel, pIntegrity, returnLengthIL, out returnLengthIL)) {
-                    TOKEN_MANDATORY_LABEL label = (TOKEN_MANDATORY_LABEL)Marshal.PtrToStructure(pIntegrity, typeof(TOKEN_MANDATORY_LABEL));
-                    IntPtr pSid = label.Label.Sid;
-                    IntPtr pSubAuthorityCount = GetSidSubAuthorityCount(pSid);
-                    if (pSubAuthorityCount != IntPtr.Zero) {
-                        int subAuthorityCount = Marshal.ReadByte(pSubAuthorityCount);
-                        if (subAuthorityCount > 0) {
-                            IntPtr pSubAuthority = GetSidSubAuthority(pSid, subAuthorityCount - 1);
-                            if (pSubAuthority != IntPtr.Zero) {
-                                info.IntegrityLevel = Marshal.ReadInt32(pSubAuthority);
+                int returnLength;
+                if (GetTokenInformation(hToken, TokenElevation, pElevation, elevationSize, out returnLength)) {
+                    TOKEN_ELEVATION elevationStruct = (TOKEN_ELEVATION)Marshal.PtrToStructure(pElevation, typeof(TOKEN_ELEVATION));
+                    info.Elevated = elevationStruct.TokenIsElevated;
+                    info.ElevationAvailable = true;
+                } else {
+                    info.Error = "GetTokenInformationElevationFailed: " + Marshal.GetLastWin32Error();
+                }
+            } finally {
+                Marshal.FreeHGlobal(pElevation);
+            }
+
+            // Integrity Level
+            int returnLengthIL;
+            GetTokenInformation(hToken, TokenIntegrityLevel, IntPtr.Zero, 0, out returnLengthIL);
+            if (returnLengthIL > 0) {
+                IntPtr pIntegrity = Marshal.AllocHGlobal(returnLengthIL);
+                try {
+                    if (GetTokenInformation(hToken, TokenIntegrityLevel, pIntegrity, returnLengthIL, out returnLengthIL)) {
+                        TOKEN_MANDATORY_LABEL label = (TOKEN_MANDATORY_LABEL)Marshal.PtrToStructure(pIntegrity, typeof(TOKEN_MANDATORY_LABEL));
+                        IntPtr pSid = label.Label.Sid;
+                        IntPtr pSubAuthorityCount = GetSidSubAuthorityCount(pSid);
+                        if (pSubAuthorityCount != IntPtr.Zero) {
+                            int subAuthorityCount = Marshal.ReadByte(pSubAuthorityCount);
+                            if (subAuthorityCount > 0) {
+                                IntPtr pSubAuthority = GetSidSubAuthority(pSid, subAuthorityCount - 1);
+                                if (pSubAuthority != IntPtr.Zero) {
+                                    info.IntegrityLevel = Marshal.ReadInt32(pSubAuthority);
+                                    info.IntegrityAvailable = true;
+                                }
                             }
                         }
                     }
+                } finally {
+                    Marshal.FreeHGlobal(pIntegrity);
                 }
-            } finally {
-                Marshal.FreeHGlobal(pIntegrity);
+            }
+        } finally {
+            if (hToken != IntPtr.Zero) {
+                CloseHandle(hToken);
+            }
+            if (hProcess != IntPtr.Zero) {
+                CloseHandle(hProcess);
             }
         }
-
-        CloseHandle(hToken);
-        CloseHandle(hProcess);
         return info;
     }
 }
@@ -315,8 +335,8 @@ $currentElevated = $currentPrincipal.IsInRole([System.Security.Principal.Windows
 $currentSessionId = [System.Diagnostics.Process]::GetCurrentProcess().SessionId
 
 $sec = [WinSecurity]::GetProcessSecurity($PID)
-$currentIntegrityLevel = if ($sec.Success) { $sec.IntegrityLevel } else { $null }
-$currentIntegrityAvailable = $sec.Success
+$currentIntegrityLevel = if ($sec.IntegrityAvailable) { $sec.IntegrityLevel } else { $null }
+$currentIntegrityAvailable = $sec.IntegrityAvailable
 
 $processes = Get-CimInstance Win32_Process | Select-Object ProcessId,ParentProcessId,Name,CommandLine,ExecutablePath,CreationDate,SessionId
 

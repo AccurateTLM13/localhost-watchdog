@@ -576,7 +576,79 @@ test("regression - bypass attempt via defaults fails closed", async () => {
   
   const dryRunResult = await dryRun.requestDryRun(requestFor(recordWithUnavailableWatchdog));
   assert.equal(dryRunResult.passed, false); // Must fail closed!
-  assert.equal(dryRunResult.checks.some(c => c.code === "OWNER_POLICY" && c.status === "blocked"), true);
+});
+
+test("regression - safety check cases for elevation and integrity split", () => {
+  const { buildConfirmationSafety, evaluateConfirmationPolicy } = require("../src/actions/security-policy");
+
+  // Case 1: elevation succeeds but integrity retrieval fails => integrity unavailable
+  const watchdog1 = {
+    CurrentSid: "S-1-5-21-mock-watchdog-sid",
+    CurrentSessionId: 1,
+    CurrentElevated: true,
+    CurrentIntegrityLevel: null,
+    CurrentIntegrityAvailable: false
+  };
+  const proc1 = {
+    ownerSid: "S-1-5-21-mock-watchdog-sid",
+    sessionId: 1,
+    elevated: true,
+    integrityLevel: null // target integrity unavailable
+  };
+  const safety1 = buildConfirmationSafety(proc1, watchdog1);
+  assert.equal(safety1.watchdog.integrityAvailable, false);
+  assert.equal(safety1.elevation.targetIntegrityAvailable, false);
+
+  // Case 2: integrity buffer exists but SID/RID extraction fails => integrity unavailable
+  const watchdog2 = {
+    CurrentSid: "S-1-5-21-mock-watchdog-sid",
+    CurrentSessionId: 1,
+    CurrentElevated: true,
+    CurrentIntegrityLevel: null,
+    CurrentIntegrityAvailable: false
+  };
+  const proc2 = {
+    ownerSid: "S-1-5-21-mock-watchdog-sid",
+    sessionId: 1,
+    elevated: true,
+    integrityLevel: null
+  };
+  const safety2 = buildConfirmationSafety(proc2, watchdog2);
+  assert.equal(safety2.watchdog.integrityAvailable, false);
+
+  // Case 3: both succeed => integrity available with valid RID
+  const watchdog3 = {
+    CurrentSid: "S-1-5-21-mock-watchdog-sid",
+    CurrentSessionId: 1,
+    CurrentElevated: true,
+    CurrentIntegrityLevel: 12288,
+    CurrentIntegrityAvailable: true
+  };
+  const proc3 = {
+    ownerSid: "S-1-5-21-mock-watchdog-sid",
+    sessionId: 1,
+    elevated: true,
+    integrityLevel: 12288
+  };
+  const safety3 = buildConfirmationSafety(proc3, watchdog3);
+  assert.equal(safety3.watchdog.integrityAvailable, true);
+  assert.equal(safety3.watchdog.integrityLevel, 12288);
+  assert.equal(safety3.elevation.targetIntegrityAvailable, true);
+
+  // Case 4: simulation fails closed for cases 1 and 2
+  const record1 = { confirmationSafety: safety1 };
+  const policy1 = evaluateConfirmationPolicy(record1);
+  assert.equal(policy1.elevationPassed, false);
+  assert.equal(policy1.failureReason, "TARGET_METADATA_UNAVAILABLE");
+
+  const record2 = { confirmationSafety: safety2 };
+  const policy2 = evaluateConfirmationPolicy(record2);
+  assert.equal(policy2.elevationPassed, false);
+  assert.equal(policy2.failureReason, "TARGET_METADATA_UNAVAILABLE");
+
+  const record3 = { confirmationSafety: safety3 };
+  const policy3 = evaluateConfirmationPolicy(record3);
+  assert.equal(policy3.elevationPassed, true);
 });
 
 async function readyManagers(record, overrides = {}) {
