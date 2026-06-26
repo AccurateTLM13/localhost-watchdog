@@ -651,7 +651,7 @@ Response:
 Future proposal only; not implemented.
 
 ```txt
-POST /api/actions/stop/execute
+POST /api/actions/stop/simulate-execution
 ```
 
 Request:

@@ -346,6 +346,13 @@ function safety(overrides = {}) {
       targetIntegrityAvailable: overrides.targetIntegrityAvailable !== false,
       targetElevated: overrides.targetElevated === true,
       match: overrides.elevationMatch || "same-non-elevated-session"
+    },
+    watchdog: {
+      available: overrides.watchdogAvailable !== false,
+      elevated: overrides.watchdogElevated === true,
+      integrityAvailable: overrides.watchdogIntegrityAvailable !== false,
+      sid: overrides.watchdogSid || "S-1-5-21-mock-watchdog-sid",
+      sessionId: overrides.watchdogSessionId ?? 1
     }
   };
 }

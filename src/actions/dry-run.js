@@ -333,9 +333,10 @@ function addConflictChecks(checks, expected, current) {
 
 function addSecurityChecks(checks, current, options = {}) {
   const watchdogPrivilege = options.watchdogPrivilege || {
-    available: true,
+    available: false,
     elevated: false,
-    integrityAvailable: true
+    integrityAvailable: false,
+    sessionAvailable: false
   };
   const policy = evaluateConfirmationPolicy(current, { watchdogPrivilege });
 

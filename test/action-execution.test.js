@@ -355,6 +355,230 @@ test("process exit during revalidation blocks execution", async () => {
   assert.equal(result.code, "ALREADY_EXITED");
 });
 
+test("regression - unavailable Watchdog integrity fails closed", async () => {
+  const original = devRecord();
+  
+  // Watchdog integrity unavailable mock
+  const changedRecord = devRecord({
+    confirmationSafety: safety({
+      watchdogAvailable: false,
+      watchdogIntegrityAvailable: false
+    })
+  });
+
+  const { dryRun, confirmation, execution, session } = await readyManagers(original, {
+    executionScanProvider: async () => ({ servers: [changedRecord] })
+  });
+
+  const created = await confirmation.createConfirmation({
+    dryRunRequestId: dryRun.requestId,
+    statusAccessToken: dryRun.statusAccessToken,
+    processInstanceId: original.processInstanceId,
+    listenerId: original.listenerId
+  }, { session });
+
+  const accepted = await confirmation.submitConfirmation({
+    confirmationRequestId: created.confirmationRequestId,
+    typedPhrase: created.displayChallenge.requiredPhrase,
+    statusAccessToken: dryRun.statusAccessToken,
+    idempotencyKey: "submit-unavailable-wd-integrity"
+  }, {
+    session,
+    confirmationAccessToken: created.confirmationAccessToken,
+    statusAccessToken: dryRun.statusAccessToken
+  });
+
+  assert.equal(accepted.state, "confirmation-accepted");
+
+  const result = await execution.executeStop({
+    confirmationRequestId: created.confirmationRequestId,
+    typedToken: created.displayChallenge.requiredPhrase,
+    processInstanceId: original.processInstanceId,
+    listenerId: original.listenerId,
+    idempotencyKey: "exec-unavailable-wd-integrity"
+  }, { session });
+
+  assert.equal(result.ok, false);
+  assert.equal(result.code, "OWNER_BLOCKED");
+  assert.equal(result.failureReason, "WATCHDOG_METADATA_UNAVAILABLE");
+});
+
+test("regression - unavailable target integrity fails closed", async () => {
+  const original = devRecord();
+  
+  // Target integrity unavailable mock
+  const changedRecord = devRecord({
+    confirmationSafety: safety({
+      targetIntegrityAvailable: false,
+      elevationAvailable: false
+    })
+  });
+
+  const { dryRun, confirmation, execution, session } = await readyManagers(original, {
+    executionScanProvider: async () => ({ servers: [changedRecord] })
+  });
+
+  const created = await confirmation.createConfirmation({
+    dryRunRequestId: dryRun.requestId,
+    statusAccessToken: dryRun.statusAccessToken,
+    processInstanceId: original.processInstanceId,
+    listenerId: original.listenerId
+  }, { session });
+
+  const accepted = await confirmation.submitConfirmation({
+    confirmationRequestId: created.confirmationRequestId,
+    typedPhrase: created.displayChallenge.requiredPhrase,
+    statusAccessToken: dryRun.statusAccessToken,
+    idempotencyKey: "submit-unavailable-tgt-integrity"
+  }, {
+    session,
+    confirmationAccessToken: created.confirmationAccessToken,
+    statusAccessToken: dryRun.statusAccessToken
+  });
+
+  assert.equal(accepted.state, "confirmation-accepted");
+
+  const result = await execution.executeStop({
+    confirmationRequestId: created.confirmationRequestId,
+    typedToken: created.displayChallenge.requiredPhrase,
+    processInstanceId: original.processInstanceId,
+    listenerId: original.listenerId,
+    idempotencyKey: "exec-unavailable-tgt-integrity"
+  }, { session });
+
+  assert.equal(result.ok, false);
+  assert.equal(result.code, "ELEVATION_BLOCKED");
+  assert.equal(result.failureReason, "TARGET_METADATA_UNAVAILABLE");
+});
+
+test("regression - compatible elevated contexts allow execution revalidation", async () => {
+  const record = devRecord({
+    confirmationSafety: safety({
+      targetElevated: true,
+      watchdogElevated: true,
+      elevationMatch: "compatible-elevated"
+    })
+  });
+
+  const { dryRun, confirmation, execution, session } = await readyManagers(record, {
+    watchdogPrivilege: {
+      available: true,
+      elevated: true,
+      integrityAvailable: true,
+      sid: "S-1-5-21-mock-watchdog-sid",
+      sessionId: 1
+    }
+  });
+
+  const created = await confirmation.createConfirmation({
+    dryRunRequestId: dryRun.requestId,
+    statusAccessToken: dryRun.statusAccessToken,
+    processInstanceId: record.processInstanceId,
+    listenerId: record.listenerId,
+    idempotencyKey: "create-elevated-compat"
+  }, { session });
+
+  const accepted = await confirmation.submitConfirmation({
+    confirmationRequestId: created.confirmationRequestId,
+    typedPhrase: created.displayChallenge.requiredPhrase,
+    statusAccessToken: dryRun.statusAccessToken,
+    idempotencyKey: "submit-elevated-compat"
+  }, {
+    session,
+    confirmationAccessToken: created.confirmationAccessToken,
+    statusAccessToken: dryRun.statusAccessToken
+  });
+
+  assert.equal(accepted.state, "confirmation-accepted");
+
+  const result = await execution.executeStop({
+    confirmationRequestId: created.confirmationRequestId,
+    typedToken: created.displayChallenge.requiredPhrase,
+    processInstanceId: record.processInstanceId,
+    listenerId: record.listenerId,
+    idempotencyKey: "exec-elevated-compat"
+  }, { session });
+
+  assert.equal(result.ok, true);
+  assert.equal(result.state, "simulation-completed");
+});
+
+test("regression - privilege mismatch blocks execution", async () => {
+  const original = devRecord();
+  // Target is elevated, but watchdog is not elevated.
+  const changedRecord = devRecord({
+    confirmationSafety: safety({
+      targetElevated: true,
+      watchdogElevated: false,
+      elevationMatch: "elevation-mismatch"
+    })
+  });
+
+  const { dryRun, confirmation, execution, session } = await readyManagers(original, {
+    executionScanProvider: async () => ({ servers: [changedRecord] }),
+    watchdogPrivilege: {
+      available: true,
+      elevated: false,
+      integrityAvailable: true,
+      sid: "S-1-5-21-mock-watchdog-sid",
+      sessionId: 1
+    }
+  });
+
+  const created = await confirmation.createConfirmation({
+    dryRunRequestId: dryRun.requestId,
+    statusAccessToken: dryRun.statusAccessToken,
+    processInstanceId: original.processInstanceId,
+    listenerId: original.listenerId
+  }, { session });
+
+  const accepted = await confirmation.submitConfirmation({
+    confirmationRequestId: created.confirmationRequestId,
+    typedPhrase: created.displayChallenge.requiredPhrase,
+    statusAccessToken: dryRun.statusAccessToken,
+    idempotencyKey: "submit-priv-mismatch"
+  }, {
+    session,
+    confirmationAccessToken: created.confirmationAccessToken,
+    statusAccessToken: dryRun.statusAccessToken
+  });
+
+  assert.equal(accepted.state, "confirmation-accepted");
+
+  const result = await execution.executeStop({
+    confirmationRequestId: created.confirmationRequestId,
+    typedToken: created.displayChallenge.requiredPhrase,
+    processInstanceId: original.processInstanceId,
+    listenerId: original.listenerId,
+    idempotencyKey: "exec-priv-mismatch"
+  }, { session });
+
+  assert.equal(result.ok, false);
+  assert.equal(result.code, "ELEVATION_BLOCKED");
+  assert.equal(result.failureReason, "PRIVILEGE_MISMATCH");
+});
+
+test("regression - bypass attempt via defaults fails closed", async () => {
+  // Mock a record where watchdog metadata is unavailable/empty
+  const recordWithUnavailableWatchdog = devRecord({
+    confirmationSafety: safety({
+      watchdogAvailable: false,
+      watchdogIntegrityAvailable: false,
+      watchdogSid: null,
+      watchdogSessionId: null
+    })
+  });
+  
+  const dryRun = createDryRunManager({
+    clock: () => NOW,
+    scanProvider: async () => ({ servers: [recordWithUnavailableWatchdog] })
+  });
+  
+  const dryRunResult = await dryRun.requestDryRun(requestFor(recordWithUnavailableWatchdog));
+  assert.equal(dryRunResult.passed, false); // Must fail closed!
+  assert.equal(dryRunResult.checks.some(c => c.code === "OWNER_POLICY" && c.status === "blocked"), true);
+});
+
 async function readyManagers(record, overrides = {}) {
   const dryRun = createDryRunManager({
     clock: () => NOW,
@@ -383,7 +607,9 @@ async function readyManagers(record, overrides = {}) {
     watchdogPrivilege: {
       available: true,
       elevated: false,
-      integrityAvailable: true
+      integrityAvailable: true,
+      sid: "S-1-5-21-mock-watchdog-sid",
+      sessionId: 1
     }
   });
 
@@ -395,7 +621,9 @@ async function readyManagers(record, overrides = {}) {
     watchdogPrivilege: {
       available: true,
       elevated: false,
-      integrityAvailable: true
+      integrityAvailable: true,
+      sid: "S-1-5-21-mock-watchdog-sid",
+      sessionId: 1
     }
   });
 
@@ -485,6 +713,13 @@ function safety(overrides = {}) {
       targetIntegrityAvailable: overrides.targetIntegrityAvailable !== false,
       targetElevated: overrides.targetElevated === true,
       match: overrides.elevationMatch || "same-non-elevated-session"
+    },
+    watchdog: {
+      available: overrides.watchdogAvailable !== false,
+      elevated: overrides.watchdogElevated === true,
+      integrityAvailable: overrides.watchdogIntegrityAvailable !== false,
+      sid: overrides.watchdogSid || "S-1-5-21-mock-watchdog-sid",
+      sessionId: overrides.watchdogSessionId ?? 1
     }
   };
 }

@@ -184,6 +184,152 @@ foreach ($pid in $pids) {
 $results | ConvertTo-Json
 `;
 
+const CURRENT_INFO_CMD_TEMPLATE = `
+$ErrorActionPreference = 'Stop';
+$code = @'
+using System;
+using System.Runtime.InteropServices;
+
+public class WinSecurity {
+    [DllImport("advapi32.dll", SetLastError = true)]
+    private static extern bool OpenProcessToken(IntPtr ProcessHandle, uint DesiredAccess, out IntPtr TokenHandle);
+
+    [DllImport("kernel32.dll", SetLastError = true)]
+    private static extern IntPtr OpenProcess(uint processAccess, bool bInheritHandle, int processId);
+
+    [DllImport("kernel32.dll", SetLastError = true)]
+    [return: MarshalAs(UnmanagedType.Bool)]
+    private static extern bool CloseHandle(IntPtr hObject);
+
+    [DllImport("advapi32.dll", SetLastError = true)]
+    private static extern bool GetTokenInformation(IntPtr TokenHandle, int TokenInformationClass, IntPtr TokenInformation, int TokenInformationLength, out int ReturnLength);
+
+    private const uint PROCESS_QUERY_LIMITED_INFORMATION = 0x1000;
+    private const uint TOKEN_QUERY = 0x0008;
+    private const int TokenElevation = 20;
+    private const int TokenIntegrityLevel = 25;
+
+    [StructLayout(LayoutKind.Sequential)]
+    private struct TOKEN_ELEVATION {
+        public int TokenIsElevated;
+    }
+
+    [StructLayout(LayoutKind.Sequential)]
+    private struct SID_AND_ATTRIBUTES {
+        public IntPtr Sid;
+        public int Attributes;
+    }
+
+    [StructLayout(LayoutKind.Sequential)]
+    private struct TOKEN_MANDATORY_LABEL {
+        public SID_AND_ATTRIBUTES Label;
+    }
+
+    [DllImport("advapi32.dll", CharSet = CharSet.Auto, SetLastError = true)]
+    private static extern IntPtr GetSidSubAuthority(IntPtr pSid, int nSubAuthority);
+
+    [DllImport("advapi32.dll", CharSet = CharSet.Auto, SetLastError = true)]
+    private static extern IntPtr GetSidSubAuthorityCount(IntPtr pSid);
+
+    public struct ProcessSecurityInfo {
+        public bool Success;
+        public int Elevated;
+        public int IntegrityLevel;
+        public string Error;
+    }
+
+    public static ProcessSecurityInfo GetProcessSecurity(int pid) {
+        ProcessSecurityInfo info = new ProcessSecurityInfo();
+        info.Success = false;
+        info.Elevated = 0;
+        info.IntegrityLevel = 0;
+        info.Error = "";
+
+        IntPtr hProcess = OpenProcess(PROCESS_QUERY_LIMITED_INFORMATION, false, pid);
+        if (hProcess == IntPtr.Zero) {
+            info.Error = "OpenProcessFailed: " + Marshal.GetLastWin32Error();
+            return info;
+        }
+
+        IntPtr hToken = IntPtr.Zero;
+        if (!OpenProcessToken(hProcess, TOKEN_QUERY, out hToken)) {
+            info.Error = "OpenProcessTokenFailed: " + Marshal.GetLastWin32Error();
+            CloseHandle(hProcess);
+            return info;
+        }
+
+        // Elevation
+        int elevationSize = Marshal.SizeOf(typeof(TOKEN_ELEVATION));
+        IntPtr pElevation = Marshal.AllocHGlobal(elevationSize);
+        try {
+            int returnLength;
+            if (GetTokenInformation(hToken, TokenElevation, pElevation, elevationSize, out returnLength)) {
+                TOKEN_ELEVATION elevationStruct = (TOKEN_ELEVATION)Marshal.PtrToStructure(pElevation, typeof(TOKEN_ELEVATION));
+                info.Elevated = elevationStruct.TokenIsElevated;
+                info.Success = true;
+            } else {
+                info.Error = "GetTokenInformationElevationFailed: " + Marshal.GetLastWin32Error();
+            }
+        } finally {
+            Marshal.FreeHGlobal(pElevation);
+        }
+
+        // Integrity Level
+        int returnLengthIL;
+        GetTokenInformation(hToken, TokenIntegrityLevel, IntPtr.Zero, 0, out returnLengthIL);
+        if (returnLengthIL > 0) {
+            IntPtr pIntegrity = Marshal.AllocHGlobal(returnLengthIL);
+            try {
+                if (GetTokenInformation(hToken, TokenIntegrityLevel, pIntegrity, returnLengthIL, out returnLengthIL)) {
+                    TOKEN_MANDATORY_LABEL label = (TOKEN_MANDATORY_LABEL)Marshal.PtrToStructure(pIntegrity, typeof(TOKEN_MANDATORY_LABEL));
+                    IntPtr pSid = label.Label.Sid;
+                    IntPtr pSubAuthorityCount = GetSidSubAuthorityCount(pSid);
+                    if (pSubAuthorityCount != IntPtr.Zero) {
+                        int subAuthorityCount = Marshal.ReadByte(pSubAuthorityCount);
+                        if (subAuthorityCount > 0) {
+                            IntPtr pSubAuthority = GetSidSubAuthority(pSid, subAuthorityCount - 1);
+                            if (pSubAuthority != IntPtr.Zero) {
+                                info.IntegrityLevel = Marshal.ReadInt32(pSubAuthority);
+                            }
+                        }
+                    }
+                }
+            } finally {
+                Marshal.FreeHGlobal(pIntegrity);
+            }
+        }
+
+        CloseHandle(hToken);
+        CloseHandle(hProcess);
+        return info;
+    }
+}
+'@
+
+Add-Type -TypeDefinition $code -ErrorAction SilentlyContinue
+
+$currentIdentity = [System.Security.Principal.WindowsIdentity]::GetCurrent()
+$currentSid = $currentIdentity.User.Value
+$currentPrincipal = New-Object System.Security.Principal.WindowsPrincipal($currentIdentity)
+$currentElevated = $currentPrincipal.IsInRole([System.Security.Principal.WindowsBuiltInRole]::Administrator)
+$currentSessionId = [System.Diagnostics.Process]::GetCurrentProcess().SessionId
+
+$sec = [WinSecurity]::GetProcessSecurity($PID)
+$currentIntegrityLevel = if ($sec.Success) { $sec.IntegrityLevel } else { $null }
+$currentIntegrityAvailable = $sec.Success
+
+$processes = Get-CimInstance Win32_Process | Select-Object ProcessId,ParentProcessId,Name,CommandLine,ExecutablePath,CreationDate,SessionId
+
+[PSCustomObject]@{
+    CurrentSid = $currentSid
+    CurrentElevated = $currentElevated
+    CurrentSessionId = $currentSessionId
+    CurrentIntegrityLevel = $currentIntegrityLevel
+    CurrentIntegrityAvailable = $currentIntegrityAvailable
+    Processes = $processes
+} | ConvertTo-Json -Depth 4
+`;
+
 let lastScanDiagnostics = null;
 
 async function scanWindows(options = {}) {
@@ -223,7 +369,9 @@ async function scanWindows(options = {}) {
   let watchdogContext = {
     CurrentSid: null,
     CurrentElevated: false,
-    CurrentSessionId: null
+    CurrentSessionId: null,
+    CurrentIntegrityLevel: null,
+    CurrentIntegrityAvailable: false
   };
 
   try {
@@ -232,14 +380,16 @@ async function scanWindows(options = {}) {
       "-ExecutionPolicy",
       "Bypass",
       "-Command",
-      "$ErrorActionPreference='Stop'; $currentIdentity = [System.Security.Principal.WindowsIdentity]::GetCurrent(); $currentSid = $currentIdentity.User.Value; $currentPrincipal = New-Object System.Security.Principal.WindowsPrincipal($currentIdentity); $currentElevated = $currentPrincipal.IsInRole([System.Security.Principal.WindowsBuiltInRole]::Administrator); $currentSessionId = [System.Diagnostics.Process]::GetCurrentProcess().SessionId; $processes = Get-CimInstance Win32_Process | Select-Object ProcessId,ParentProcessId,Name,CommandLine,ExecutablePath,CreationDate,SessionId; [PSCustomObject]@{ CurrentSid = $currentSid; CurrentElevated = $currentElevated; CurrentSessionId = $currentSessionId; Processes = $processes; } | ConvertTo-Json -Depth 4"
+      CURRENT_INFO_CMD_TEMPLATE
     ]);
     const parsed = JSON.parse(processOutput);
     if (parsed && typeof parsed === "object") {
       watchdogContext = {
         CurrentSid: parsed.CurrentSid || null,
         CurrentElevated: parsed.CurrentElevated === true,
-        CurrentSessionId: parsed.CurrentSessionId != null ? Number(parsed.CurrentSessionId) : null
+        CurrentSessionId: parsed.CurrentSessionId != null ? Number(parsed.CurrentSessionId) : null,
+        CurrentIntegrityLevel: parsed.CurrentIntegrityLevel != null ? Number(parsed.CurrentIntegrityLevel) : null,
+        CurrentIntegrityAvailable: parsed.CurrentIntegrityAvailable === true
       };
       processes = parseWindowsProcesses(JSON.stringify(parsed.Processes || []));
     } else {

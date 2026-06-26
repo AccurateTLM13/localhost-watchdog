@@ -7,7 +7,7 @@ Scope completed:
 - Completed Windows process owner, SID, session, and elevation/integrity query template (`SEC_CMD_TEMPLATE`) utilizing inline C# P/Invoke compiled via `Add-Type` for targeted PIDs (listeners + ancestors).
 - Added fail-closed logic to block actions when mandatory owner or security metadata is unavailable, elevated mismatch is detected, or SYSTEM/service ownership is found.
 - Added a non-executing execution simulator (`src/actions/execution.js`) that performs all revalidation checks (PID exists, creation time matches, port ownership unchanged, owner/session matches, privilege safe) and always returns `actionExecuted: false` and `executionAuthorized: false`.
-- Registered route `POST /api/actions/stop/execute` on the local HTTP server, returning simulation outcomes.
+- Registered route `POST /api/actions/stop/simulate-execution` on the local HTTP server, returning simulation outcomes.
 - Added extensive test fixtures and test cases (`test/action-execution.test.js`) covering same-user/session, different user/session, SYSTEM ownership, elevation mismatch, missing metadata, PID reuse, listener reassignment, and process exit during revalidation.
 - Configured Windows GitHub Actions CI (`.github/workflows/ci.yml`) to automatically run `npm test` and `npm run lint`.
 

@@ -131,7 +131,7 @@ test("dry-run API rejects unsafe request shapes with categorized safe errors", a
     assert.equal(badHost.body.code, "UNSUPPORTED_ORIGIN");
     assert.equal(badHost.body.actionExecuted, false);
 
-    const missing = await getJson(`${baseUrl}/api/actions/stop/execute`);
+    const missing = await getJson(`${baseUrl}/api/actions/stop/simulate-execution`);
     assert.equal(missing.statusCode, 405);
     assert.equal(missing.body.code, "METHOD_NOT_ALLOWED");
   });

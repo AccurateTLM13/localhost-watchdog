@@ -30,10 +30,10 @@ function createConfirmationManager(options = {}) {
   const clock = options.clock || (() => new Date());
   const randomId = options.randomId || randomHex;
   const watchdogPrivilege = options.watchdogPrivilege || {
-    available: true,
+    available: false,
     elevated: false,
-    integrityAvailable: true,
-    sessionAvailable: true
+    integrityAvailable: false,
+    sessionAvailable: false
   };
 
   async function createConfirmation(input = {}, context = {}) {
@@ -60,12 +60,13 @@ function createConfirmationManager(options = {}) {
 
     const current = findCurrentRecord(dryRunLookup.originalRequest, snapshot);
     const policy = evaluateConfirmationPolicy(current, { watchdogPrivilege });
-    if (!policy.ownerPassed) return blocked("owner-blocked", "OWNER_BLOCKED", policy.ownerMessage, { policy });
-    if (!policy.elevationPassed) return blocked("elevation-blocked", "ELEVATION_BLOCKED", policy.elevationMessage, { policy });
+    if (!policy.ownerPassed) return blocked("owner-blocked", "OWNER_BLOCKED", policy.ownerMessage, { failureReason: policy.failureReason, policy });
+    if (!policy.elevationPassed) return blocked("elevation-blocked", "ELEVATION_BLOCKED", policy.elevationMessage, { failureReason: policy.failureReason, policy });
 
-    const dryRunRecheck = evaluateDryRunFromSnapshot(dryRunLookup.originalRequest, snapshot, { now, ttlMs, randomId });
+    const dryRunRecheck = evaluateDryRunFromSnapshot(dryRunLookup.originalRequest, snapshot, { now, ttlMs, randomId, watchdogPrivilege });
     if (!dryRunRecheck.passed) {
-      return blocked(stateFromChecks(dryRunRecheck.checks), codeFromChecks(dryRunRecheck.checks), "Fresh revalidation blocked confirmation.");
+      const policy = evaluateConfirmationPolicy(current, { watchdogPrivilege });
+      return blocked(stateFromChecks(dryRunRecheck.checks), codeFromChecks(dryRunRecheck.checks), "Fresh revalidation blocked confirmation.", { failureReason: policy.failureReason, policy });
     }
 
     const sessionNonce = context.session && context.session.sessionNonce;
@@ -152,14 +153,15 @@ function createConfirmationManager(options = {}) {
     }
 
     const current = findCurrentRecord(entry.originalRequest, snapshot);
-    const dryRunRecheck = evaluateDryRunFromSnapshot(entry.originalRequest, snapshot, { now, ttlMs, randomId });
+    const dryRunRecheck = evaluateDryRunFromSnapshot(entry.originalRequest, snapshot, { now, ttlMs, randomId, watchdogPrivilege });
     if (!dryRunRecheck.passed) {
-      return setTerminal(entry, stateFromChecks(dryRunRecheck.checks), codeFromChecks(dryRunRecheck.checks), "Fresh revalidation blocked confirmation.");
+      const policy = evaluateConfirmationPolicy(current, { watchdogPrivilege });
+      return setTerminal(entry, stateFromChecks(dryRunRecheck.checks), codeFromChecks(dryRunRecheck.checks), "Fresh revalidation blocked confirmation.", { failureReason: policy.failureReason, policy });
     }
 
     const policy = evaluateConfirmationPolicy(current, { watchdogPrivilege });
-    if (!policy.ownerPassed) return setTerminal(entry, "owner-blocked", "OWNER_BLOCKED", policy.ownerMessage);
-    if (!policy.elevationPassed) return setTerminal(entry, "elevation-blocked", "ELEVATION_BLOCKED", policy.elevationMessage);
+    if (!policy.ownerPassed) return setTerminal(entry, "owner-blocked", "OWNER_BLOCKED", policy.ownerMessage, { failureReason: policy.failureReason, policy });
+    if (!policy.elevationPassed) return setTerminal(entry, "elevation-blocked", "ELEVATION_BLOCKED", policy.elevationMessage, { failureReason: policy.failureReason, policy });
 
     try {
       auditWriter(buildAuditInput(entry, current, context.session, policy, now, true, "confirmation-accepted"));
@@ -357,7 +359,7 @@ function terminalResponse(entry) {
   };
 }
 
-function setTerminal(entry, state, code, message) {
+function setTerminal(entry, state, code, message, extra = {}) {
   entry.state = state;
   entry.tokenHash = null;
   return {
@@ -367,7 +369,8 @@ function setTerminal(entry, state, code, message) {
     code,
     message: safeText(message),
     actionExecuted: false,
-    executionAuthorized: false
+    executionAuthorized: false,
+    ...extra
   };
 }
 

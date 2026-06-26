@@ -152,11 +152,11 @@ function createServer(options = {}) {
         return sendJson(response, result.ok === false ? 422 : 200, result);
       }
 
-      if (pathname === "/api/actions/stop/execute" && request.method !== "POST") {
+      if (pathname === "/api/actions/stop/simulate-execution" && request.method !== "POST") {
         return sendJson(response, 405, safeApiError("METHOD_NOT_ALLOWED", "Only POST is supported for execution requests."));
       }
 
-      if (request.method === "POST" && pathname === "/api/actions/stop/execute") {
+      if (request.method === "POST" && pathname === "/api/actions/stop/simulate-execution") {
         const body = await readProtectedJson(request, response);
         if (!body.ok) return;
         const session = sessionManager.validateRequest(request, body.body);

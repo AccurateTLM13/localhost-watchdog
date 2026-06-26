@@ -20,17 +20,19 @@ function buildUnavailableConfirmationSafety() {
       match: "unavailable"
     },
     watchdog: {
-      available: true,
+      available: false,
       elevated: false,
-      integrityAvailable: true
+      integrityAvailable: false
     }
   };
 }
 
 function buildConfirmationSafety(proc, watchdog) {
-  const watchdogSid = watchdog && watchdog.currentSid || null;
-  const watchdogSessionId = watchdog && watchdog.currentSessionId != null ? Number(watchdog.currentSessionId) : null;
-  const watchdogElevated = watchdog && watchdog.currentElevated === true;
+  const watchdogSid = watchdog && (watchdog.CurrentSid || watchdog.currentSid || watchdog.sid) || null;
+  const watchdogSessionId = watchdog && (watchdog.CurrentSessionId ?? watchdog.currentSessionId ?? watchdog.sessionId) != null ? Number(watchdog.CurrentSessionId ?? watchdog.currentSessionId ?? watchdog.sessionId) : null;
+  const watchdogElevated = watchdog && (watchdog.CurrentElevated === true || watchdog.currentElevated === true || watchdog.elevated === true);
+  const watchdogIntegrityAvailable = watchdog && (watchdog.CurrentIntegrityAvailable === true || watchdog.currentIntegrityAvailable === true || watchdog.integrityAvailable === true);
+  const watchdogIntegrityLevel = watchdog && (watchdog.CurrentIntegrityLevel ?? watchdog.currentIntegrityLevel ?? watchdog.integrityLevel) != null ? Number(watchdog.CurrentIntegrityLevel ?? watchdog.currentIntegrityLevel ?? watchdog.integrityLevel) : null;
   
   const targetSid = proc && proc.ownerSid || null;
   const targetSessionId = proc && proc.sessionId != null ? Number(proc.sessionId) : null;
@@ -43,6 +45,9 @@ function buildConfirmationSafety(proc, watchdog) {
   const ownerAvailable = targetSid != null;
   const sessionAvailable = targetSessionId != null;
   const elevationAvailable = targetElevated != null || targetIntegrityLevel != null;
+  const targetIntegrityAvailable = targetIntegrityLevel != null;
+  
+  const watchdogAvailable = watchdogSid != null && watchdogSessionId != null && watchdogIntegrityAvailable === true;
   
   let ownerMatch = "unavailable";
   if (ownerAvailable && watchdogSid) {
@@ -77,13 +82,13 @@ function buildConfirmationSafety(proc, watchdog) {
   
   // Elevation Match
   let elevationMatch = "unavailable";
-  if (elevationAvailable && watchdogSid) {
+  if (elevationAvailable && watchdogAvailable) {
     if (watchdogElevated && targetElevated) {
-      elevationMatch = "elevation-mismatch";
+      elevationMatch = "compatible-elevated";
     } else if (watchdogElevated && !targetElevated) {
       elevationMatch = "watchdog-elevated";
     } else if (!watchdogElevated && targetElevated) {
-      elevationMatch = "target-elevated";
+      elevationMatch = "elevation-mismatch";
     } else {
       if (sessionMatch === "same-session") {
         elevationMatch = "same-non-elevated-session";
@@ -109,14 +114,17 @@ function buildConfirmationSafety(proc, watchdog) {
     },
     elevation: {
       available: elevationAvailable,
-      targetIntegrityAvailable: targetIntegrityLevel != null,
+      targetIntegrityAvailable,
       targetElevated,
       match: elevationMatch
     },
     watchdog: {
-      available: watchdogSid != null,
+      available: watchdogAvailable,
       elevated: watchdogElevated,
-      integrityAvailable: true
+      integrityAvailable: watchdogIntegrityAvailable,
+      integrityLevel: watchdogIntegrityLevel,
+      sid: watchdogSid,
+      sessionId: watchdogSessionId
     }
   };
 }
@@ -126,29 +134,66 @@ function evaluateConfirmationPolicy(record, options = {}) {
   const owner = safety.owner || {};
   const session = safety.session || {};
   const elevation = safety.elevation || {};
-  const watchdog = options.watchdogPrivilege || {};
+  
+  const recordWatchdog = safety.watchdog;
+  const managerWatchdog = options.watchdogPrivilege || {};
+  
+  const watchdog = (recordWatchdog && recordWatchdog.available !== undefined) ? recordWatchdog : managerWatchdog;
+  
+  const watchdogSid = watchdog.sid || watchdog.CurrentSid || watchdog.currentSid || null;
+  const watchdogSessionId = watchdog.sessionId ?? watchdog.CurrentSessionId ?? watchdog.currentSessionId ?? null;
+  const watchdogElevated = watchdog.elevated === true || watchdog.CurrentElevated === true || watchdog.currentElevated === true;
+  const watchdogIntegrityAvailable = watchdog.integrityAvailable === true || watchdog.CurrentIntegrityAvailable === true || watchdog.currentIntegrityAvailable === true;
+  const watchdogAvailable = watchdog.available === true && (watchdogSid != null && watchdogSessionId != null && watchdogIntegrityAvailable === true);
+
   const ownerAvailable = owner.available === true;
   const sessionAvailable = session.available === true;
+  const elevationAvailable = elevation.available === true;
   const targetIntegrityAvailable = elevation.targetIntegrityAvailable === true || elevation.integrityAvailable === true;
-  const watchdogIntegrityAvailable = watchdog.integrityAvailable === true;
   const targetElevated = elevation.targetElevated === true || elevation.elevated === true;
-  const watchdogElevated = watchdog.elevated === true;
   const systemOwned = owner.systemOwned === true || owner.accountType === "system";
   const serviceOwned = owner.serviceOwned === true || owner.accountType === "service";
 
   const ownerPassed = ownerAvailable &&
     sessionAvailable &&
+    watchdogAvailable &&
     owner.match === "same-user" &&
     session.match === "same-session" &&
     !systemOwned &&
     !serviceOwned;
-  const elevationPassed = targetIntegrityAvailable &&
+
+  const elevationPassed = elevationAvailable &&
+    watchdogAvailable &&
+    targetIntegrityAvailable &&
     watchdogIntegrityAvailable &&
-    elevation.available === true &&
-    watchdog.available !== false &&
-    targetElevated === false &&
-    watchdogElevated === false &&
-    (elevation.match === "same-non-elevated-session" || elevation.match === "same-non-elevated");
+    !(targetElevated === true && watchdogElevated === false) &&
+    (elevation.match === "compatible-elevated" ||
+     elevation.match === "watchdog-elevated" ||
+     elevation.match === "same-non-elevated-session" ||
+     elevation.match === "same-non-elevated");
+
+  let failureReason = null;
+  if (!ownerAvailable || !sessionAvailable || !elevationAvailable || !targetIntegrityAvailable) {
+    failureReason = "TARGET_METADATA_UNAVAILABLE";
+  } else if (!watchdogAvailable || !watchdogIntegrityAvailable) {
+    failureReason = "WATCHDOG_METADATA_UNAVAILABLE";
+  } else if (!ownerPassed) {
+    if (owner.match === "different-user") {
+      failureReason = "USER_MISMATCH";
+    } else if (session.match === "different-session") {
+      failureReason = "SESSION_MISMATCH";
+    } else if (systemOwned || serviceOwned) {
+      failureReason = "SYSTEM_SERVICE_BLOCKED";
+    } else {
+      failureReason = "OWNER_POLICY_BLOCKED";
+    }
+  } else if (!elevationPassed) {
+    if (targetElevated === true && !watchdogElevated) {
+      failureReason = "PRIVILEGE_MISMATCH";
+    } else {
+      failureReason = "ELEVATION_POLICY_BLOCKED";
+    }
+  }
 
   return {
     ownerPassed,
@@ -156,7 +201,8 @@ function evaluateConfirmationPolicy(record, options = {}) {
     ownerSession: ownerPassed ? "same-user-same-session" : "blocked",
     elevation: elevationPassed ? "same-non-elevated-session" : "blocked",
     ownerMessage: ownerPassed ? "Owner and login-session policy passed." : "Owner or login-session policy blocked confirmation.",
-    elevationMessage: elevationPassed ? "Elevation policy passed." : "Elevation or integrity policy blocked confirmation."
+    elevationMessage: elevationPassed ? "Elevation policy passed." : "Elevation or integrity policy blocked confirmation.",
+    failureReason
   };
 }
 

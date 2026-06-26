@@ -23,7 +23,7 @@ To prevent unauthorized, repeated, or accidental process stop actions, any futur
      - The specific `processInstanceId` and `listenerId` of the target.
 4. **Single-Use Enforcement**:
    - The token can be consumed exactly once.
-   - When a POST request to `/api/actions/stop/execute` is received, the server immediately marks the corresponding token hash as consumed/invalid.
+   - When a POST request to `/api/actions/stop/simulate-execution` is received, the server immediately marks the corresponding token hash as consumed/invalid.
    - Subsequent or duplicate requests presenting the same token must fail closed with a generic `EXECUTION_PROOF_INVALID` or `DRY_RUN_EXPIRED` response.
 
 ---

@@ -16,10 +16,10 @@ function createExecutionManager(options = {}) {
   const clock = options.clock || (() => new Date());
   const randomId = options.randomId || randomHex;
   const watchdogPrivilege = options.watchdogPrivilege || {
-    available: true,
+    available: false,
     elevated: false,
-    integrityAvailable: true,
-    sessionAvailable: true
+    integrityAvailable: false,
+    sessionAvailable: false
   };
 
   const executions = new Map();
@@ -131,23 +131,25 @@ function createExecutionManager(options = {}) {
     }
 
     // 7. Evaluate dry-run safety recheck on current record
-    const recheck = evaluateDryRunFromSnapshot(entry.originalRequest, snapshot, { now, randomId });
+    const recheck = evaluateDryRunFromSnapshot(entry.originalRequest, snapshot, { now, randomId, watchdogPrivilege });
     if (!recheck.passed) {
       const firstBlocker = recheck.blockers && recheck.blockers[0];
       let code = firstBlocker ? firstBlocker.code : "REVALIDATION_BLOCKED";
       let message = firstBlocker ? firstBlocker.message : "Revalidation blocked execution.";
       if (code === "OWNER_POLICY") code = "OWNER_BLOCKED";
       if (code === "ELEVATION_POLICY") code = "ELEVATION_BLOCKED";
-      return errorResponse(code, message);
+      
+      const policy = evaluateConfirmationPolicy(current, { watchdogPrivilege });
+      return errorResponse(code, message, { failureReason: policy.failureReason, policy });
     }
 
     // 8. Re-evaluate confirmation policies
     const policy = evaluateConfirmationPolicy(current, { watchdogPrivilege });
     if (!policy.ownerPassed) {
-      return errorResponse("OWNER_BLOCKED", policy.ownerMessage);
+      return errorResponse("OWNER_BLOCKED", policy.ownerMessage, { failureReason: policy.failureReason, policy });
     }
     if (!policy.elevationPassed) {
-      return errorResponse("ELEVATION_BLOCKED", policy.elevationMessage);
+      return errorResponse("ELEVATION_BLOCKED", policy.elevationMessage, { failureReason: policy.failureReason, policy });
     }
 
     // 9. Write Execution Audit (failure blocks execution)
@@ -197,14 +199,15 @@ function createExecutionManager(options = {}) {
     return result;
   }
 
-  function errorResponse(code, message) {
+  function errorResponse(code, message, extra = {}) {
     return {
       ok: false,
       code,
       category: "execution",
       message: redactSensitiveText(String(message)),
       actionExecuted: false,
-      executionAuthorized: false
+      executionAuthorized: false,
+      ...extra
     };
   }
 
