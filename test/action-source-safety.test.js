@@ -14,7 +14,7 @@ test("source contains no destructive process-control primitives", () => {
   assert.doesNotMatch(text, /\btaskkill\b/i);
   assert.doesNotMatch(text, /\bTerminateProcess\b/i);
   assert.doesNotMatch(text, /\bSuspend-Process\b/i);
-  assert.doesNotMatch(text, /\/api\/actions\/(?:stop|restart|kill|cleanup)\/execute/i);
+  assert.doesNotMatch(text, /\/api\/actions\/(?:restart|kill|cleanup)\/execute/i);
   assert.doesNotMatch(text, /\/api\/actions\/(?:restart|kill|cleanup|bulk)/i);
 });
 

@@ -132,8 +132,8 @@ test("dry-run API rejects unsafe request shapes with categorized safe errors", a
     assert.equal(badHost.body.actionExecuted, false);
 
     const missing = await getJson(`${baseUrl}/api/actions/stop/execute`);
-    assert.equal(missing.statusCode, 404);
-    assert.equal(missing.body.code, "NOT_FOUND");
+    assert.equal(missing.statusCode, 405);
+    assert.equal(missing.body.code, "METHOD_NOT_ALLOWED");
   });
 });
 

@@ -162,14 +162,109 @@ function safeOutcomeMap(value) {
   return result;
 }
 
+const DEFAULT_EXECUTION_AUDIT_PATH = join(process.cwd(), ".localhost-watchdog", "execution-audit.jsonl");
+const EXECUTION_AUDIT_SCHEMA = "localhost-watchdog.execution-audit.v1";
+const DEFAULT_EXECUTION_RETENTION = Object.freeze({
+  maxAgeMs: 30 * 24 * 60 * 60 * 1000,
+  maxRecords: 5000
+});
+
+function writeExecutionAudit(input, options = {}) {
+  const filePath = options.filePath || DEFAULT_EXECUTION_AUDIT_PATH;
+  const retention = {
+    ...DEFAULT_EXECUTION_RETENTION,
+    ...(options.retention || {})
+  };
+  const writer = options.writer || defaultExecutionWriter;
+  const record = buildExecutionAuditRecord(input);
+  writer(filePath, record, retention);
+  return record;
+}
+
+function buildExecutionAuditRecord(input = {}) {
+  const redactedIdentity = input.redactedIdentity || {};
+  return {
+    schemaVersion: EXECUTION_AUDIT_SCHEMA,
+    recordType: "execution-attempt",
+    executionRequestId: safeValue(input.executionRequestId),
+    confirmationRequestId: safeValue(input.confirmationRequestId),
+    dryRunRequestId: safeValue(input.dryRunRequestId),
+    timestamp: safeValue(input.timestamp),
+    redactedIdentity: {
+      processInstanceId: safeValue(redactedIdentity.processInstanceId),
+      listenerId: safeValue(redactedIdentity.listenerId),
+      port: safeNumber(redactedIdentity.port),
+      bindHostClass: safeValue(redactedIdentity.bindHostClass),
+      processName: safeValue(redactedIdentity.processName),
+      category: safeValue(redactedIdentity.category),
+      confidenceLevel: safeValue(redactedIdentity.confidenceLevel),
+      projectDisplayName: safeValue(redactedIdentity.projectDisplayName)
+    },
+    finalState: safeValue(input.finalState),
+    errorCode: safeValue(input.errorCode),
+    actionExecuted: false,
+    executionAuthorized: false
+  };
+}
+
+function defaultExecutionWriter(filePath, record, retention) {
+  mkdirSync(dirname(filePath), { recursive: true });
+  recoverInterruptedWrite(filePath);
+  pruneExecutionAudit(filePath, retention);
+  appendFileSync(filePath, `${JSON.stringify(record)}\n`, "utf8");
+}
+
+function pruneExecutionAudit(filePath, retention = DEFAULT_EXECUTION_RETENTION, now = new Date()) {
+  if (!existsSync(filePath)) return { retained: 0, pruned: 0 };
+  recoverInterruptedWrite(filePath);
+  const parsed = readExecutionAuditRecords(filePath);
+  const cutoff = now.getTime() - retention.maxAgeMs;
+  const filtered = parsed.records
+    .filter((record) => {
+      const time = new Date(record.timestamp || 0).getTime();
+      return Number.isFinite(time) && time >= cutoff;
+    })
+    .slice(-retention.maxRecords);
+  const pruned = parsed.records.length - filtered.length;
+  if (pruned <= 0 && parsed.invalidLines === 0) return { retained: filtered.length, pruned: 0 };
+  const tempPath = `${filePath}.tmp`;
+  writeFileSync(tempPath, filtered.map((record) => JSON.stringify(record)).join("\n") + (filtered.length ? "\n" : ""), "utf8");
+  renameSync(tempPath, filePath);
+  return { retained: filtered.length, pruned };
+}
+
+function readExecutionAuditRecords(filePath) {
+  if (!existsSync(filePath)) return { records: [], invalidLines: 0 };
+  const text = readFileSync(filePath, "utf8");
+  const records = [];
+  let invalidLines = 0;
+  for (const line of text.split(/\r?\n/)) {
+    if (!line.trim()) continue;
+    try {
+      const parsed = JSON.parse(line);
+      if (parsed && parsed.schemaVersion === EXECUTION_AUDIT_SCHEMA) records.push(parsed);
+      else invalidLines += 1;
+    } catch {
+      invalidLines += 1;
+    }
+  }
+  return { records, invalidLines };
+}
+
 module.exports = {
   CONFIRMATION_AUDIT_SCHEMA,
+  EXECUTION_AUDIT_SCHEMA,
   DEFAULT_DRY_RUN_AUDIT_PATH,
   DEFAULT_CONFIRMATION_AUDIT_PATH,
+  DEFAULT_EXECUTION_AUDIT_PATH,
   buildDryRunAuditRecord,
   buildConfirmationAuditRecord,
+  buildExecutionAuditRecord,
   pruneConfirmationAudit,
+  pruneExecutionAudit,
   readConfirmationAuditRecords,
+  readExecutionAuditRecords,
   writeConfirmationAudit,
-  writeDryRunAudit
+  writeDryRunAudit,
+  writeExecutionAudit
 };

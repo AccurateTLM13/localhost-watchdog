@@ -7,6 +7,7 @@ const { attachLifecycleContext } = require("../process/lifecycle");
 const { buildProcessTiming } = require("../process/timing");
 const { buildProcessTree } = require("../process/tree");
 const { detectProjectOwnership } = require("../project/ownership");
+const { buildUnavailableConfirmationSafety, buildConfirmationSafety } = require("../actions/security-policy");
 
 function parseJsonArray(output) {
   const text = String(output || "").trim();
@@ -40,7 +41,14 @@ function parseWindowsProcesses(output) {
       processName: item.Name || null,
       commandLine: item.CommandLine || null,
       executablePath: item.ExecutablePath || null,
-      creationTime: parseWindowsDate(item.CreationDate)
+      creationTime: parseWindowsDate(item.CreationDate),
+      sessionId: nullableNumber(item.SessionId),
+      ownerSid: item.OwnerSid || null,
+      ownerUser: item.OwnerUser || null,
+      ownerDomain: item.OwnerDomain || null,
+      elevated: item.Elevated != null ? Boolean(item.Elevated) : null,
+      integrityLevel: nullableNumber(item.IntegrityLevel),
+      securityError: item.SecurityError || null
     });
   }
 
@@ -126,8 +134,10 @@ function normalizeConnections(connections, processes, options = {}) {
       timingSource: timing.timingSource,
       timingStatus: timing.timingStatus,
       timingError: timing.timingError,
-      user: null,
-      confirmationSafety: buildUnavailableConfirmationSafety(),
+      user: process.ownerUser || null,
+      confirmationSafety: options.watchdog
+        ? buildConfirmationSafety(process, options.watchdog)
+        : buildUnavailableConfirmationSafety(),
       rawSource,
       raw: {
         source: rawSource
@@ -190,32 +200,7 @@ function normalizeConnections(connections, processes, options = {}) {
   };
 }
 
-function buildUnavailableConfirmationSafety() {
-  return {
-    owner: {
-      available: false,
-      match: "unavailable",
-      accountType: "unknown",
-      systemOwned: false,
-      serviceOwned: false
-    },
-    session: {
-      available: false,
-      match: "unavailable"
-    },
-    elevation: {
-      available: false,
-      targetIntegrityAvailable: false,
-      targetElevated: null,
-      match: "unavailable"
-    },
-    watchdog: {
-      available: true,
-      elevated: false,
-      integrityAvailable: true
-    }
-  };
-}
+
 
 function normalizeListenerConnections(connections) {
   const seen = new Map();

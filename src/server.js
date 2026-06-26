@@ -5,6 +5,7 @@ const { readFileSync } = require("node:fs");
 const { extname, join } = require("node:path");
 const { createConfirmationManager } = require("./actions/confirmation");
 const { createDryRunManager } = require("./actions/dry-run");
+const { createExecutionManager } = require("./actions/execution");
 const { buildDiagnostics } = require("./diagnostics");
 const { buildDiagnosticsExport } = require("./diagnostics/export");
 const { safeError, safeInternalLogMessage } = require("./privacy/errors");
@@ -22,6 +23,12 @@ function createServer(options = {}) {
     dryRunManager,
     scanProvider: options.confirmationScanProvider,
     auditWriter: options.confirmationAuditWriter,
+    watchdogPrivilege: options.watchdogPrivilege
+  });
+  const executionManager = options.executionManager || createExecutionManager({
+    confirmationManager,
+    scanProvider: options.executionScanProvider,
+    auditWriter: options.executionAuditWriter,
     watchdogPrivilege: options.watchdogPrivilege
   });
 
@@ -143,6 +150,19 @@ function createServer(options = {}) {
           confirmationAccessToken: request.headers["x-confirmation-access-token"] || body.body.confirmationAccessToken
         });
         return sendJson(response, result.ok === false ? 422 : 200, result);
+      }
+
+      if (pathname === "/api/actions/stop/execute" && request.method !== "POST") {
+        return sendJson(response, 405, safeApiError("METHOD_NOT_ALLOWED", "Only POST is supported for execution requests."));
+      }
+
+      if (request.method === "POST" && pathname === "/api/actions/stop/execute") {
+        const body = await readProtectedJson(request, response);
+        if (!body.ok) return;
+        const session = sessionManager.validateRequest(request, body.body);
+        if (!session.ok) return sendJson(response, 403, sessionError(session));
+        const result = await executionManager.executeStop(body.body, { session });
+        return sendJson(response, result.ok ? 200 : 422, result);
       }
 
       if (request.method === "GET" && (pathname === "/" || pathname === "/index.html")) {

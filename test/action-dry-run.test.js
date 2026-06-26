@@ -314,6 +314,7 @@ function devRecord(overrides = {}) {
       stopReason: "root-reached",
       chain: [{ category: "editor", processName: "Code.exe" }, { category: "node-runtime", processName: "node.exe" }]
     },
+    confirmationSafety: safety(),
     safeToStop: false,
     safeToRestart: false,
     bulkStoppable: false
@@ -322,7 +323,30 @@ function devRecord(overrides = {}) {
     ...base,
     ...overrides,
     project: overrides.project === undefined ? base.project : overrides.project,
-    processTree: overrides.processTree === undefined ? base.processTree : overrides.processTree
+    processTree: overrides.processTree === undefined ? base.processTree : overrides.processTree,
+    confirmationSafety: overrides.confirmationSafety === undefined ? base.confirmationSafety : overrides.confirmationSafety
+  };
+}
+
+function safety(overrides = {}) {
+  return {
+    owner: {
+      available: overrides.ownerAvailable !== false,
+      match: overrides.ownerMatch || "same-user",
+      accountType: overrides.accountType || "user",
+      systemOwned: overrides.systemOwned === true,
+      serviceOwned: overrides.serviceOwned === true
+    },
+    session: {
+      available: overrides.sessionAvailable !== false,
+      match: overrides.sessionMatch || "same-session"
+    },
+    elevation: {
+      available: overrides.elevationAvailable !== false,
+      targetIntegrityAvailable: overrides.targetIntegrityAvailable !== false,
+      targetElevated: overrides.targetElevated === true,
+      match: overrides.elevationMatch || "same-non-elevated-session"
+    }
   };
 }
 

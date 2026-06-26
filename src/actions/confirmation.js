@@ -7,6 +7,7 @@ const { evaluateDryRunFromSnapshot } = require("./dry-run");
 const { safeErrorMessage } = require("../privacy/errors");
 const { redactSensitiveText } = require("../privacy/redact");
 const { scanWindows } = require("../scanner/windows");
+const { evaluateConfirmationPolicy } = require("./security-policy");
 
 const DEFAULT_CONFIRMATION_TTL_MS = 60 * 1000;
 const CONFIRMATION_TOKEN_BYTES = 32;
@@ -240,11 +241,16 @@ function createConfirmationManager(options = {}) {
     }
   }
 
+  function getConfirmationEntryInternal(confirmationRequestId) {
+    return confirmations.get(confirmationRequestId) || null;
+  }
+
   return {
     cancelConfirmation,
     createConfirmation,
     getConfirmationStatus,
-    submitConfirmation
+    submitConfirmation,
+    getConfirmationEntryInternal
   };
 }
 
@@ -260,44 +266,7 @@ function findCurrentRecord(request, snapshot) {
   return servers.find((record) => record.processInstanceId === request.processInstanceId && record.listenerId === request.listenerId) || null;
 }
 
-function evaluateConfirmationPolicy(record, options = {}) {
-  const safety = record && record.confirmationSafety || {};
-  const owner = safety.owner || {};
-  const session = safety.session || {};
-  const elevation = safety.elevation || {};
-  const watchdog = options.watchdogPrivilege || {};
-  const ownerAvailable = owner.available === true;
-  const sessionAvailable = session.available === true;
-  const targetIntegrityAvailable = elevation.targetIntegrityAvailable === true || elevation.integrityAvailable === true;
-  const watchdogIntegrityAvailable = watchdog.integrityAvailable === true;
-  const targetElevated = elevation.targetElevated === true || elevation.elevated === true;
-  const watchdogElevated = watchdog.elevated === true;
-  const systemOwned = owner.systemOwned === true || owner.accountType === "system";
-  const serviceOwned = owner.serviceOwned === true || owner.accountType === "service";
 
-  const ownerPassed = ownerAvailable &&
-    sessionAvailable &&
-    owner.match === "same-user" &&
-    session.match === "same-session" &&
-    !systemOwned &&
-    !serviceOwned;
-  const elevationPassed = targetIntegrityAvailable &&
-    watchdogIntegrityAvailable &&
-    elevation.available === true &&
-    watchdog.available !== false &&
-    targetElevated === false &&
-    watchdogElevated === false &&
-    (elevation.match === "same-non-elevated-session" || elevation.match === "same-non-elevated");
-
-  return {
-    ownerPassed,
-    elevationPassed,
-    ownerSession: ownerPassed ? "same-user-same-session" : "blocked",
-    elevation: elevationPassed ? "same-non-elevated-session" : "blocked",
-    ownerMessage: ownerPassed ? "Owner and login-session policy passed." : "Owner or login-session policy blocked confirmation.",
-    elevationMessage: elevationPassed ? "Elevation policy passed." : "Elevation or integrity policy blocked confirmation."
-  };
-}
 
 function buildDisplay(record, request, policy) {
   const expected = request.expected || {};
@@ -446,9 +415,26 @@ function buildAuditInput(entry, current, session, policy, now, phraseAccepted, f
 }
 
 function stateFromChecks(checks = []) {
-  if (checks.some((item) => item.code === "CREATION_TIME_MATCH" || item.code === "PID_MATCH" || item.code === "STABLE_IDENTITY")) return "identity-changed";
-  if (checks.some((item) => item.code === "LISTENER_ID_MATCH" || item.code === "LISTENER_PORT_OWNERSHIP" || item.code === "HOST_BIND_MATCH")) return "identity-changed";
-  if (checks.some((item) => String(item.code).startsWith("PROTECTED_"))) return "owner-blocked";
+  const isBlocked = (code) => checks.some((item) => item.code === code && item.status === "blocked");
+  if (
+    isBlocked("CREATION_TIME_MATCH") ||
+    isBlocked("PID_MATCH") ||
+    isBlocked("STABLE_IDENTITY") ||
+    isBlocked("LISTENER_ID_MATCH") ||
+    isBlocked("LISTENER_PORT_OWNERSHIP") ||
+    isBlocked("HOST_BIND_MATCH") ||
+    isBlocked("PROCESS_NAME_MATCH") ||
+    isBlocked("PROTECTED_TREE_BOUNDARY") ||
+    isBlocked("PROJECT_NAME_MATCH") ||
+    isBlocked("PROJECT_ROOT_MATCH") ||
+    isBlocked("PROJECT_SOURCE_MATCH") ||
+    isBlocked("CONFLICTING_NEWER_SCAN")
+  ) {
+    return "identity-changed";
+  }
+  if (isBlocked("OWNER_POLICY")) return "owner-blocked";
+  if (isBlocked("ELEVATION_POLICY")) return "elevation-blocked";
+  if (checks.some((item) => String(item.code).startsWith("PROTECTED_") && item.status === "blocked")) return "owner-blocked";
   return "not-available";
 }
 

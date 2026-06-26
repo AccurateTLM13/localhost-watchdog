@@ -16,6 +16,7 @@ const {
 const { safeError, safeErrorMessage } = require("../privacy/errors");
 const { redactSensitiveText } = require("../privacy/redact");
 const { scanWindows } = require("../scanner/windows");
+const { evaluateConfirmationPolicy } = require("./security-policy");
 
 const DEFAULT_DRY_RUN_TTL_MS = 60 * 1000;
 const STATUS_ACCESS_TOKEN_BYTES = 32;
@@ -212,6 +213,7 @@ function evaluateDryRunFromSnapshot(input, snapshot, options = {}) {
   addMetadataChecks(checks, current);
   addLifecycleChecks(checks, current);
   addConflictChecks(checks, expected, current);
+  addSecurityChecks(checks, current, options);
 
   return buildResult(input, current, checks, now, ttlMs, randomId);
 }
@@ -327,6 +329,27 @@ function addConflictChecks(checks, expected, current) {
     checks.push(check("CONFLICTING_NEWER_SCAN", "pass", "No conflicting newer scan evidence was detected."));
   }
 
+}
+
+function addSecurityChecks(checks, current, options = {}) {
+  const watchdogPrivilege = options.watchdogPrivilege || {
+    available: true,
+    elevated: false,
+    integrityAvailable: true
+  };
+  const policy = evaluateConfirmationPolicy(current, { watchdogPrivilege });
+
+  if (!policy.ownerPassed) {
+    checks.push(check("OWNER_POLICY", "blocked", policy.ownerMessage));
+  } else {
+    checks.push(check("OWNER_POLICY", "pass", policy.ownerMessage));
+  }
+
+  if (!policy.elevationPassed) {
+    checks.push(check("ELEVATION_POLICY", "blocked", policy.elevationMessage));
+  } else {
+    checks.push(check("ELEVATION_POLICY", "pass", policy.elevationMessage));
+  }
 }
 
 function compareExpected(checks, code, expected, actual, passMessage, blockMessage) {
