@@ -511,19 +511,16 @@ async function getProcessInfo(pid) {
 async function isRepositoryTestFixture(pid, processName, expectedToken) {
   const name = String(processName || "").toLowerCase();
   if (name !== "node.exe" && name !== "node") {
-    console.log("Failed on name:", name);
     return false;
   }
   const info = await getProcessInfo(pid);
   if (!info) {
-    console.log("Failed on info for pid:", pid);
     return false;
   }
 
   const cmdLine = String(info.commandLine);
 
   if (!expectedToken || typeof expectedToken !== "string") {
-    console.log("Failed on token:", expectedToken);
     return false;
   }
 
@@ -534,11 +531,9 @@ async function isRepositoryTestFixture(pid, processName, expectedToken) {
   const normalizedAllowlist = allowlistedPath.replace(/\\/g, '/').toLowerCase();
   
   if (!normalizedCmd.includes(normalizedAllowlist)) {
-    console.log("Failed on allowlist. normalizedCmd:", normalizedCmd, "normalizedAllowlist:", normalizedAllowlist);
     return false;
   }
   if (!cmdLine.includes(expectedToken)) {
-    console.log("Failed on token include. cmdLine:", cmdLine, "token:", expectedToken);
     return false;
   }
 
