@@ -651,6 +651,7 @@ test("regression - safety check cases for elevation and integrity split", () => 
   assert.equal(policy3.elevationPassed, true);
 });
 
+
 async function readyManagers(record, overrides = {}) {
   const dryRun = createDryRunManager({
     clock: () => NOW,
