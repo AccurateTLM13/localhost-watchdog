@@ -1,8 +1,8 @@
 # Localhost Watchdog
 
-Localhost Watchdog is a Windows-first local development server scanner. The current implementation is still read-only: it scans local listeners, classifies likely development servers, probes localhost HTTP metadata, detects project ownership, reports launcher/process-tree context, adds cautious lifecycle context, and compares privacy-safe local scan history.
+Localhost Watchdog is a Windows-first local development server scanner. The current dashboard and built-in scanner remain inspect-first: they scan local listeners, classify likely development servers, probe localhost HTTP metadata, detect project ownership, report launcher/process-tree context, add cautious lifecycle context, and compare privacy-safe local scan history.
 
-No stop, restart, tray, bulk cleanup, process killing, or destructive action code exists in this phase.
+The action path now includes dry-run, confirmation, simulation, and a guarded proof-gated stop execution route. The default graceful-stop backend fails closed unless a platform-safe dispatcher is explicitly supplied; no force stop, restart, tray, bulk cleanup, process-tree killing, `process.kill`, `taskkill`, or `Stop-Process` primitive exists in this phase.
 
 ## Commands
 
@@ -28,8 +28,10 @@ Read-only API endpoints:
 - `POST /api/actions/stop/confirmations/submit`
 - `POST /api/actions/stop/confirmations/status`
 - `POST /api/actions/stop/confirmations/cancel`
+- `POST /api/actions/stop/simulate-execution`
+- `POST /api/actions/stop/execute`
 
-The dry-run and confirmation endpoints perform read-only safety revalidation and intent recording only. They do not stop, restart, signal, kill, clean up, or mutate any process.
+The dry-run, confirmation, and simulation endpoints perform safety revalidation and intent recording only. `POST /api/actions/stop/execute` requires a short-lived execution proof issued by accepted confirmation, repeats final revalidation, requires audit availability, and uses an injected graceful-stop dispatcher. Without that dispatcher, the endpoint fails closed and does not stop, restart, signal, kill, clean up, or mutate any process.
 
 ## Scanner Strategy
 
@@ -55,12 +57,12 @@ Scanner, probe, config, history, and API failures are reported with safe error c
 
 - Protected processes are hidden or read-only and never actionable.
 - Unknown low-confidence listeners are hidden by default and counted.
-- All visible records are inspect/open only.
-- `safeToStop`, `safeToRestart`, and `bulkStoppable` are always `false`.
+- Dashboard-visible records remain inspect/open only unless an explicit proof-gated backend execution flow is invoked through the protected API.
+- `safeToStop`, `safeToRestart`, and `bulkStoppable` are always `false` on scanner records.
 - Classification output includes structured `evidence` entries and a `confidenceLevel`.
 - HTTP probe evidence has score `0`; probe results cannot make a process manageable.
 - Dry-run eligibility is separate from action flags. A passed dry run can report `confirmation-eligible`, but still grants no permission to execute an action.
-- Confirmation records explicit user intent only. Accepted confirmation still returns `actionExecuted:false` and `executionAuthorized:false`.
+- Confirmation records explicit user intent and may issue a short-lived single-use execution proof for the exact confirmed target. Confirmation itself still returns `actionExecuted:false`.
 
 ## Dry-Run Eligibility
 
@@ -84,7 +86,7 @@ Dry-run attempts write a privacy-safe local audit record to `.localhost-watchdog
 
 ## Confirmation-Only Intent Recording
 
-Confirmation is separate from dry-run status and separate from any future execution phase. It records explicit intent only and cannot stop, restart, signal, suspend, terminate, clean up, or otherwise modify a process.
+Confirmation is separate from dry-run status and separate from execution dispatch. It records explicit intent and can issue a short-lived execution proof, but confirmation submission itself cannot stop, restart, signal, suspend, terminate, clean up, or otherwise modify a process.
 
 The dashboard first requests a short-lived local session from `POST /api/session`. Confirmation endpoints require strict localhost Host and Origin checks, a server-generated session nonce, CSRF validation, JSON content type, bounded request bodies, and an unexpired dry-run status proof. Missing, null, malformed, or foreign origins fail closed.
 
@@ -299,6 +301,8 @@ Optional user dev roots can be configured in `config/dev-roots.json`:
 ```
 
 Only existing absolute directories are accepted as ownership search boundaries. Project paths explicitly listed in `config/projects.json` are still trusted as configured projects even when they sit outside dev roots. API and dashboard output redact user-profile roots as `%USERPROFILE%`.
+
+Managed project entries may also include `startCommand`, `preferredPort`, `portStrategy`, `runtime`, and `tags`. Start and restart requests are fail-closed unless the server is created with an injected project launcher; the repository does not spawn arbitrary commands by default. `GET /api/projects` lists validated configured projects, while protected `POST /api/projects/start` and `POST /api/projects/restart` require the same local session and CSRF checks used by action execution endpoints.
 
 See [docs/scanner-policy.md](docs/scanner-policy.md) for redaction, fixture, protected-process, and confidence rules.
 

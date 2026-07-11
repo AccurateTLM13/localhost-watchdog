@@ -1,5 +1,24 @@
 # Progress Log
 
+## 2026-07-11 - Phase B/C execution proof and guarded stop execution path
+
+Scope completed:
+- Mapped the future execution contract onto the current dry-run, confirmation, execution, audit, and server route flow.
+- Added short-lived single-use execution proofs issued only after accepted confirmation; proofs are stored as hashes, bound to the accepted confirmation target, and consumed before final execution revalidation.
+- Added a protected `POST /api/actions/stop/execute` route that requires the local session/CSRF envelope plus an execution access token and idempotency key.
+- Split real execution mode from the existing non-destructive simulation path so `/api/actions/stop/simulate-execution` remains available for simulator checks.
+- Added a guarded graceful-stop dispatcher seam and post-action verification flow for exact target listener disappearance, listener-still-active, respawn/reassignment, and verification-unavailable outcomes. The default dispatcher fails closed unless a platform-safe backend is supplied.
+- Extended execution audit records to carry execution authorization/action flags and added tests for proof issuance, proof replay, audit-failure blocking before dispatch, successful injected stop dispatch, listener-still-active reporting, and API proof forwarding.
+
+Safety status:
+- No force-kill, process-tree kill, restart, cleanup, bulk action, `process.kill`, `taskkill`, or `Stop-Process` primitive was added.
+- The dashboard still does not expose stop, restart, kill, cleanup, or bulk controls.
+- Real execution remains single-target, proof-gated, audit-gated, and final-revalidation-gated; the default graceful-stop backend is unavailable/fail-closed in this environment.
+
+Manual checks:
+- `npm test` passes.
+- `npm run lint` passes.
+
 ## 2026-06-26 - Execution Readiness milestone
 
 Scope completed:
@@ -471,3 +490,10 @@ Manual checks:
 
 - `npm test` passes.
 - `npm run lint` passes.
+
+## Phase D/E managed project actions
+
+- Added a managed project registry module that normalizes `config/projects.json` entries into validated project records with redacted display paths, preferred-port metadata, runtime tags, and fail-closed validation details.
+- Added a proof-safe project start manager that refuses to launch without an injected launcher backend, requires idempotency keys, detects already-running configured projects, and reports `actionExecuted` only when dispatch is attempted.
+- Added a managed restart manager that requires a configured startable project, dispatches graceful stop through the existing injected seam, verifies listener disappearance, and only then dispatches the configured start action.
+- Added protected local API endpoints for listing configured projects and requesting managed start/restart while preserving session and CSRF checks.
