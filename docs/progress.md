@@ -1,5 +1,17 @@
 # Progress Log
 
+## 2026-07-16 - Human safety review and Windows QA guide
+
+Scope completed:
+- Added a reusable reviewer guide that separates ready-for-review, ready-to-merge, and ready-to-release decisions.
+- Added a PR #3-specific review checklist for execution proofs, fail-closed revalidation, backend injection, audit/privacy, and managed-project boundaries.
+- Added safe manual Windows QA steps, explicit stop conditions, required evidence, future review routing, and a typed signoff template.
+- Linked the guide from the README document map and release checklist.
+
+Safety status:
+- Documentation only; no runtime, action, scanner, backend, or UI behavior changed.
+- The guide prohibits testing action flows against existing local processes and keeps production backend approval separate from PR #3 approval.
+
 ## 2026-07-11 - Phase B/C execution proof and guarded stop execution path
 
 Scope completed:

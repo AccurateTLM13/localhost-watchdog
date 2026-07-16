@@ -319,6 +319,7 @@ See [docs/scanner-policy.md](docs/scanner-policy.md) for redaction, fixture, pro
 | `docs/07-data-contracts.md` | JSON schemas and config shapes |
 | `docs/08-agent-prompts.md` | Ready-to-use implementation prompts |
 | `docs/09-release-checklist.md` | Quality gates before each release |
+| `docs/10-human-safety-review-guide.md` | Human approval, Windows QA, evidence, and signoff guide |
 | `docs/privacy.md` | Privacy notes for local scan history |
 | `docs/progress.md` | Implementation progress log |
 | `docs/reuse-decisions.md` | Reuse and license decisions |

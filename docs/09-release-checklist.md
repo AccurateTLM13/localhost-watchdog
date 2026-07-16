@@ -4,6 +4,8 @@
 
 Never release a version that adds destructive behavior without new safety tests.
 
+Complete the applicable review and signoff in [`docs/10-human-safety-review-guide.md`](10-human-safety-review-guide.md) before marking a safety-sensitive pull request ready to merge or release.
+
 ## General Checklist
 
 - [ ] README updated.
