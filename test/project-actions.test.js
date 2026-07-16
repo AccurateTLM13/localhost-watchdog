@@ -6,6 +6,7 @@ const { mkdtempSync } = require("node:fs");
 const { tmpdir } = require("node:os");
 const test = require("node:test");
 const { createProjectRegistry } = require("../src/project/registry");
+const { normalizePath, redactConfiguredPath } = require("../src/config/load");
 const { createStartManager } = require("../src/actions/start");
 const { createRestartManager } = require("../src/actions/restart");
 
@@ -19,8 +20,8 @@ test("project registry normalizes managed projects and keeps raw paths out of di
   const [project] = manager.listProjects();
   assert.equal(project.id, "web");
   assert.equal(project.valid, true);
-  assert.equal(project.path, root);
-  assert.equal(project.displayPath, root);
+  assert.equal(project.path, normalizePath(root));
+  assert.equal(project.displayPath, redactConfiguredPath(root));
   assert.equal(project.preferredPort, 5173);
 });
 
