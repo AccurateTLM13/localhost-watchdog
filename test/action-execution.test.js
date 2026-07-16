@@ -59,6 +59,154 @@ test("execution simulator performs planned final checks and returns actionExecut
   assert.equal(auditRecords[0].executionAuthorized, false);
 });
 
+test("real stop execution requires single-use proof, dispatches graceful stop, and verifies listener disappearance", async () => {
+  const record = devRecord();
+  const auditRecords = [];
+  const stopCalls = [];
+  const { dryRun, confirmation, execution, session } = await readyManagers(record, {
+    executionAuditWriter: (input) => auditRecords.push(buildExecutionAuditRecord(input)),
+    gracefulStop: async (target) => {
+      stopCalls.push(target);
+      return { ok: true };
+    },
+    executionPostActionScanProvider: async () => ({ servers: [] })
+  });
+
+  const created = await confirmation.createConfirmation({
+    dryRunRequestId: dryRun.requestId,
+    statusAccessToken: dryRun.statusAccessToken,
+    processInstanceId: record.processInstanceId,
+    listenerId: record.listenerId
+  }, { session });
+  const accepted = await confirmation.submitConfirmation({
+    confirmationRequestId: created.confirmationRequestId,
+    typedPhrase: created.displayChallenge.requiredPhrase,
+    statusAccessToken: dryRun.statusAccessToken,
+    idempotencyKey: "submit-real-stop"
+  }, {
+    session,
+    confirmationAccessToken: created.confirmationAccessToken,
+    statusAccessToken: dryRun.statusAccessToken
+  });
+
+  assert.equal(accepted.authorization.authorizesExecution, true);
+  assert.match(accepted.executionAccessToken, /^exec-access-[a-f0-9]{64}$/);
+
+  const result = await execution.executeStop({
+    confirmationRequestId: created.confirmationRequestId,
+    executionAccessToken: accepted.executionAccessToken,
+    processInstanceId: record.processInstanceId,
+    listenerId: record.listenerId,
+    idempotencyKey: "execute-real-stop",
+    executionMode: "execute"
+  }, { session });
+
+  assert.equal(result.ok, true);
+  assert.equal(result.state, "success");
+  assert.equal(result.actionExecuted, true);
+  assert.equal(result.executionAuthorized, true);
+  assert.equal(stopCalls.length, 1);
+  assert.equal(stopCalls[0].pid, record.pid);
+  assert.equal(auditRecords.some((item) => item.finalState === "execution-dispatching" && item.executionAuthorized === true), true);
+  assert.equal(auditRecords.some((item) => item.finalState === "success" && item.actionExecuted === true), true);
+
+  const replay = await execution.executeStop({
+    confirmationRequestId: created.confirmationRequestId,
+    executionAccessToken: accepted.executionAccessToken,
+    processInstanceId: record.processInstanceId,
+    listenerId: record.listenerId,
+    idempotencyKey: "execute-real-stop-replay",
+    executionMode: "execute"
+  }, { session });
+  assert.equal(replay.ok, false);
+  assert.equal(replay.code, "EXECUTION_PROOF_INVALID");
+});
+
+test("real stop execution fails closed before dispatch when audit is unavailable", async () => {
+  const record = devRecord();
+  let stopCalled = false;
+  const { dryRun, confirmation, execution, session } = await readyManagers(record, {
+    executionAuditWriter: () => {
+      throw new Error("disk full");
+    },
+    gracefulStop: async () => {
+      stopCalled = true;
+      return { ok: true };
+    },
+    executionPostActionScanProvider: async () => ({ servers: [] })
+  });
+
+  const created = await confirmation.createConfirmation({
+    dryRunRequestId: dryRun.requestId,
+    statusAccessToken: dryRun.statusAccessToken,
+    processInstanceId: record.processInstanceId,
+    listenerId: record.listenerId
+  }, { session });
+  const accepted = await confirmation.submitConfirmation({
+    confirmationRequestId: created.confirmationRequestId,
+    typedPhrase: created.displayChallenge.requiredPhrase,
+    statusAccessToken: dryRun.statusAccessToken,
+    idempotencyKey: "submit-audit-fail"
+  }, {
+    session,
+    confirmationAccessToken: created.confirmationAccessToken,
+    statusAccessToken: dryRun.statusAccessToken
+  });
+
+  const result = await execution.executeStop({
+    confirmationRequestId: created.confirmationRequestId,
+    executionAccessToken: accepted.executionAccessToken,
+    processInstanceId: record.processInstanceId,
+    listenerId: record.listenerId,
+    idempotencyKey: "execute-audit-fail",
+    executionMode: "execute"
+  }, { session });
+
+  assert.equal(result.ok, false);
+  assert.equal(result.code, "AUDIT_LOG_UNAVAILABLE");
+  assert.equal(result.actionExecuted, false);
+  assert.equal(stopCalled, false);
+});
+
+test("real stop execution reports listener still active after dispatch", async () => {
+  const record = devRecord();
+  const { dryRun, confirmation, execution, session } = await readyManagers(record, {
+    gracefulStop: async () => ({ ok: true }),
+    executionPostActionScanProvider: async () => ({ servers: [record] })
+  });
+
+  const created = await confirmation.createConfirmation({
+    dryRunRequestId: dryRun.requestId,
+    statusAccessToken: dryRun.statusAccessToken,
+    processInstanceId: record.processInstanceId,
+    listenerId: record.listenerId
+  }, { session });
+  const accepted = await confirmation.submitConfirmation({
+    confirmationRequestId: created.confirmationRequestId,
+    typedPhrase: created.displayChallenge.requiredPhrase,
+    statusAccessToken: dryRun.statusAccessToken,
+    idempotencyKey: "submit-still-active"
+  }, {
+    session,
+    confirmationAccessToken: created.confirmationAccessToken,
+    statusAccessToken: dryRun.statusAccessToken
+  });
+
+  const result = await execution.executeStop({
+    confirmationRequestId: created.confirmationRequestId,
+    executionAccessToken: accepted.executionAccessToken,
+    processInstanceId: record.processInstanceId,
+    listenerId: record.listenerId,
+    idempotencyKey: "execute-still-active",
+    executionMode: "execute"
+  }, { session });
+
+  assert.equal(result.ok, false);
+  assert.equal(result.code, "LISTENER_STILL_ACTIVE");
+  assert.equal(result.actionExecuted, true);
+  assert.equal(result.executionAuthorized, true);
+});
+
 test("different user/session policy blocks execution", async () => {
   const original = devRecord();
   const differentUserRecord = devRecord({
@@ -689,7 +837,9 @@ async function readyManagers(record, overrides = {}) {
   const execution = createExecutionManager({
     confirmationManager: confirmation,
     scanProvider: overrides.executionScanProvider || (async () => ({ servers: [record] })),
+    postActionScanProvider: overrides.executionPostActionScanProvider || overrides.executionScanProvider || (async () => ({ servers: [record] })),
     auditWriter: overrides.executionAuditWriter || (() => {}),
+    gracefulStop: overrides.gracefulStop,
     clock: () => NOW,
     watchdogPrivilege: {
       available: true,

@@ -97,6 +97,12 @@ function inferPathCandidates(record) {
     for (const match of text.matchAll(/(?:^|\s)([A-Za-z]:\\[^\s"]+)/g)) {
       candidates.push(cleanCandidate(match[1]));
     }
+    for (const match of text.matchAll(/"((?:\/|~\/)[^"]+)"/g)) {
+      candidates.push(cleanCandidate(match[1]));
+    }
+    for (const match of text.matchAll(/(?:^|\s)((?:\/|~\/)[^\s"]+)/g)) {
+      candidates.push(cleanCandidate(match[1]));
+    }
   }
 
   return unique(candidates.filter(Boolean));
@@ -107,7 +113,10 @@ function cleanCandidate(value) {
     .replace(/[),;]+$/g, "")
     .replace(/\\node_modules\\.*$/i, "")
     .replace(/\\\.venv\\.*$/i, "")
-    .replace(/\\venv\\.*$/i, "");
+    .replace(/\\venv\\.*$/i, "")
+    .replace(/\/node_modules\/.*$/i, "")
+    .replace(/\/\.venv\/.*$/i, "")
+    .replace(/\/venv\/.*$/i, "");
 }
 
 function candidateToDirectory(candidate) {
@@ -237,7 +246,9 @@ function markerName(root) {
 }
 
 function redactPath(value) {
-  return redactConfiguredPath(value);
+  const redacted = redactConfiguredPath(value);
+  if (!redacted || redacted.startsWith("%USERPROFILE%")) return redacted;
+  return redacted.replace(/\//g, "\\");
 }
 
 function safeExists(filePath) {

@@ -1,4 +1,15 @@
 {
   "version": 1,
-  "projects": []
+  "projects": [
+    {
+      "id": "example-web",
+      "name": "Example web app",
+      "path": "%USERPROFILE%\\projects\\example-web",
+      "startCommand": "npm run dev",
+      "preferredPort": 5173,
+      "portStrategy": "strict",
+      "runtime": "node",
+      "tags": ["example"]
+    }
+  ]
 }
