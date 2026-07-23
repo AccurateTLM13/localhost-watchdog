@@ -283,7 +283,10 @@ function categoryEvidence(category, score, message, strongEvidence, warnings = [
 function hasConfiguredDevRootEvidence(record, safetyConfig) {
   const value = `${record.commandLine || ""} ${record.executablePath || ""}`;
   const normalized = String(value || "").replace(/\//g, "\\").toLowerCase();
-  return (safetyConfig.devRoots || []).some((root) => normalized.includes(`${root}\\`) || normalized.includes(`"${root}\\`));
+  return (safetyConfig.devRoots || []).some((root) => {
+    const normalizedRoot = String(root || "").replace(/\//g, "\\").toLowerCase();
+    return normalized.includes(`${normalizedRoot}\\`) || normalized.includes(`"${normalizedRoot}\\`);
+  });
 }
 
 function addEvidence(evidence, type, score, message) {

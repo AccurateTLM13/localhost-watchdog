@@ -36,9 +36,11 @@ function redactPathText(value) {
   if (value == null || value === "") return null;
 
   let redacted = String(value);
-  const home = normalizePath(process.env.USERPROFILE || process.env.HOME || "");
+  const homeValue = process.env.USERPROFILE || process.env.HOME || "";
+  const home = normalizePath(homeValue);
 
-  if (home) {
+  if (homeValue && home) {
+    redacted = redacted.replace(new RegExp(escapeRegExp(homeValue), "gi"), "%USERPROFILE%");
     redacted = redacted.replace(new RegExp(escapeRegExp(home), "gi"), "%USERPROFILE%");
   }
 

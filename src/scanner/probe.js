@@ -16,12 +16,22 @@ async function enrichWithHttpProbes(records, options = {}) {
 
   return Promise.all(records.map(async (record) => {
     if (!shouldProbeRecord(record)) {
+      const httpProbe = {
+        attempted: false,
+        skippedReason: "non-loopback-url"
+      };
+      const evidence = probeEvidence(httpProbe);
       return {
         ...record,
-        httpProbe: {
-          attempted: false,
-          skippedReason: "non-loopback-url"
-        }
+        httpProbe,
+        evidence: [
+          ...(record.evidence || []),
+          evidence
+        ],
+        reasons: [
+          ...(record.reasons || []),
+          evidence.message
+        ]
       };
     }
 
@@ -30,16 +40,17 @@ async function enrichWithHttpProbes(records, options = {}) {
       maxRedirects
     });
 
+    const evidence = probeEvidence(httpProbe);
     return {
       ...record,
       httpProbe,
       evidence: [
         ...(record.evidence || []),
-        probeEvidence(httpProbe)
+        evidence
       ],
       reasons: [
         ...(record.reasons || []),
-        probeEvidence(httpProbe).message
+        evidence.message
       ]
     };
   }));

@@ -179,7 +179,7 @@ function inspectDevRoot(value, sourceFile, io) {
   if (!value) {
     return { ...base, reasonIgnored: "empty value" };
   }
-  if (!isAbsoluteWindowsPath(expanded)) {
+  if (!isSupportedAbsolutePath(expanded)) {
     return { ...base, reasonIgnored: "not an absolute Windows path" };
   }
   try {
@@ -396,6 +396,10 @@ function safeDisplayPath(value) {
 
 function isAbsoluteWindowsPath(value) {
   return /^[a-z]:\\/i.test(String(value || "")) || /^\\\\[^\\]+\\[^\\]+/.test(String(value || ""));
+}
+
+function isSupportedAbsolutePath(value) {
+  return isAbsoluteWindowsPath(value) || path.isAbsolute(String(value || ""));
 }
 
 module.exports = {
