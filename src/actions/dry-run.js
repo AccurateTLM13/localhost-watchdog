@@ -580,6 +580,7 @@ function sanitizeStoredRequest(input) {
   return {
     processInstanceId: typeof input.processInstanceId === "string" ? input.processInstanceId : null,
     listenerId: typeof input.listenerId === "string" ? input.listenerId : null,
+    fixtureToken: typeof input.fixtureToken === "string" ? input.fixtureToken : undefined,
     expected: {
       pid: expected.pid,
       processName: expected.processName,
