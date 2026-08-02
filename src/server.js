@@ -52,10 +52,14 @@ function createServer(options = {}) {
   const adoptionManager = options.adoptionManager || createAdoptionManager({
     registry: options.projectRegistry,
     configProvider: options.projectConfigProvider,
+    configOptions: options.projectConfigOptions,
+    projectsPath: options.projectConfigPath,
     configWriter: options.projectConfigWriter
   });
+  const hostControlToken = options.hostControlToken || process.env.WATCHDOG_HOST_TOKEN || null;
+  let server;
 
-  return http.createServer(async (request, response) => {
+  server = http.createServer(async (request, response) => {
     try {
       const url = new URL(request.url, "http://127.0.0.1");
       const pathname = url.pathname;
@@ -73,6 +77,29 @@ function createServer(options = {}) {
           ok: true,
           destructiveActionsAvailable: false
         });
+      }
+
+      if (request.method === "POST" && pathname === "/api/host/shutdown") {
+        const suppliedToken = String(request.headers["x-watchdog-host-token"] || "");
+        if (!hostControlToken || suppliedToken !== hostControlToken) {
+          return sendJson(response, 403, {
+            ok: false,
+            code: "HOST_CONTROL_UNAUTHORIZED",
+            message: "The Watchdog host-control token was not accepted.",
+            actionExecuted: false,
+            serversTerminated: false
+          });
+        }
+        sendJson(response, 200, {
+          ok: true,
+          state: "watchdog-shutdown-requested",
+          actionExecuted: false,
+          serversTerminated: false
+        });
+        setTimeout(() => {
+          if (server && server.listening) server.close(() => {});
+        }, 0);
+        return;
       }
 
       if (pathname === "/api/session" && request.method !== "POST") {
@@ -287,6 +314,7 @@ function createServer(options = {}) {
       });
     }
   });
+  return server;
 }
 
 async function readProtectedJson(request, response) {

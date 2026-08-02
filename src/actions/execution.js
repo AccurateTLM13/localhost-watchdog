@@ -6,6 +6,7 @@ const { evaluateDryRunFromSnapshot } = require("./dry-run");
 const { scanWindows } = require("../scanner/windows");
 const { evaluateConfirmationPolicy } = require("./security-policy");
 const { redactSensitiveText } = require("../privacy/redact");
+const { createWindowsGracefulStopDispatcher } = require("./windows-graceful-stop");
 
 const DEFAULT_EXECUTION_TTL_MS = 30 * 1000;
 const EXECUTION_TOKEN_BYTES = 32;
@@ -15,7 +16,9 @@ function createExecutionManager(options = {}) {
   const scanProvider = options.scanProvider || (() => scanWindows({ skipHistory: true }));
   const postActionScanProvider = options.postActionScanProvider || scanProvider;
   const auditWriter = options.auditWriter || writeExecutionAudit;
-  const gracefulStop = options.gracefulStop || defaultGracefulStopUnavailable;
+  const gracefulStop = options.gracefulStop || createWindowsGracefulStopDispatcher();
+  const postActionTimeoutMs = positiveInteger(options.postActionTimeoutMs, 5000);
+  const postActionPollMs = positiveInteger(options.postActionPollMs, 500);
   const clock = options.clock || (() => new Date());
   const randomId = options.randomId || randomHex;
   const watchdogPrivilege = options.watchdogPrivilege || {
@@ -121,7 +124,7 @@ function createExecutionManager(options = {}) {
 
     let stopResult;
     try {
-      stopResult = await gracefulStop({ pid: current.pid, processInstanceId: current.processInstanceId, listenerId: current.listenerId, port: current.port, processName: current.processName });
+      stopResult = await gracefulStop({ pid: current.pid, processInstanceId: current.processInstanceId, listenerId: current.listenerId, port: current.port, processName: current.processName, createdAt: current.createdAt });
     } catch {
       stopResult = { ok: false, code: "STOP_SIGNAL_FAILED", message: "Graceful stop dispatch failed." };
     }
@@ -134,7 +137,7 @@ function createExecutionManager(options = {}) {
 
     let postSnapshot;
     try {
-      postSnapshot = await postActionScanProvider();
+      postSnapshot = await waitForPostActionVerification(postActionScanProvider, entry, postActionTimeoutMs, postActionPollMs);
     } catch {
       writeAudit(entry, current, now, executionRequestId, "verification-unavailable", "REVALIDATION_UNAVAILABLE", true, true);
       return cacheAndReturn(executionRequestId, idempotencyKey, errorResponse("REVALIDATION_UNAVAILABLE", "Post-action verification was unavailable.", { actionRequestId: executionRequestId, state: "verification-unavailable", actionExecuted: true, executionAuthorized: true }));
@@ -217,6 +220,26 @@ function createExecutionManager(options = {}) {
   }
 
   return { executeStop };
+}
+
+async function waitForPostActionVerification(scanProvider, entry, timeoutMs, pollMs) {
+  const deadline = Date.now() + timeoutMs;
+  let snapshot;
+  while (true) {
+    snapshot = await scanProvider();
+    const verification = verifyStopped(entry, snapshot);
+    if (verification.ok || verification.state === "process-respawned") return snapshot;
+    if (Date.now() >= deadline) return snapshot;
+    await delay(Math.min(pollMs, Math.max(1, deadline - Date.now())));
+  }
+}
+
+function delay(ms) {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+function positiveInteger(value, fallback) {
+  return Number.isInteger(value) && value > 0 ? value : fallback;
 }
 
 function consumeExecutionProof(entry, token, now) {
@@ -317,14 +340,6 @@ function tokenHash(value) {
 
 function randomHex(bytes) {
   return crypto.randomBytes(bytes).toString("hex");
-}
-
-async function defaultGracefulStopUnavailable() {
-  return {
-    ok: false,
-    code: "STOP_BACKEND_UNAVAILABLE",
-    message: "Graceful stop backend is unavailable in this environment. No process action was executed."
-  };
 }
 
 module.exports = {

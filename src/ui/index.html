@@ -8,54 +8,48 @@
 </head>
 <body>
   <header class="topbar">
-    <div>
+    <div class="brand-block">
+      <div class="system-line" aria-hidden="true"><span>UNIT / LWD-01</span><span>REV / 02.07</span></div>
       <h1>Localhost Watchdog</h1>
-      <p class="subtitle">Read-only local server scanner</p>
+      <p class="subtitle">See what is listening, what is owned, and what needs attention.</p>
     </div>
     <div class="status-actions">
+      <span class="system-code" aria-label="System mode read-only">SYS / READ-ONLY</span>
       <span id="scan-status" class="scan-status" role="status" aria-live="polite">Idle</span>
+      <button id="watch-toggle" type="button" aria-pressed="false" aria-label="Turn on automatic rescans">Watch off</button>
       <button id="refresh" type="button" aria-label="Refresh scanner data">Refresh</button>
     </div>
   </header>
 
   <main>
     <section id="summary" class="summary-grid" aria-label="Scanner summary"></section>
-    <section id="diagnostics" class="diagnostics" aria-label="Configuration and diagnostics"></section>
-    <section class="export-panel" aria-label="Privacy-safe diagnostics export">
-      <div class="export-header">
-        <div>
-          <span class="field-label">Diagnostics export</span>
-          <strong>Privacy-safe troubleshooting summary</strong>
-        </div>
-        <label class="sort-label" for="export-format">
-          Format
-          <select id="export-format" aria-label="Diagnostics export format">
-            <option value="markdown" selected>Markdown</option>
-            <option value="json">JSON</option>
-          </select>
-        </label>
-      </div>
-      <p class="export-notice">Exports are built from approved summary fields only. They exclude command lines, process trees, raw paths, secrets, response bodies, history records, and process lists.</p>
-      <div class="export-actions">
-        <button id="export-generate" type="button" aria-label="Generate diagnostics export preview">Generate Preview</button>
-        <button id="export-copy" type="button" aria-label="Copy generated diagnostics summary" disabled>Copy Summary</button>
-        <button id="export-download" type="button" aria-label="Download generated diagnostics summary" disabled>Download Summary</button>
-        <span id="export-status" class="scan-status" role="status" aria-live="polite">No preview generated.</span>
-      </div>
-      <pre id="export-preview" class="export-preview" tabindex="0" aria-label="Generated diagnostics export preview"></pre>
-    </section>
-    <section id="dev-roots" class="dev-roots" aria-label="Configured dev root search boundaries"></section>
 
     <section class="controls" aria-label="Filters and sorting">
-      <div class="segmented" id="filters" role="group" aria-label="Filter visible listeners">
-        <button type="button" data-filter="all" class="active" aria-pressed="true">All visible</button>
-        <button type="button" data-filter="dev" aria-pressed="false">Dev servers</button>
-        <button type="button" data-filter="local-ai" aria-pressed="false">Local AI</button>
-        <button type="button" data-filter="database" aria-pressed="false">Databases</button>
-        <button type="button" data-filter="helpers" aria-pressed="false">Browser/editor helpers</button>
-        <button type="button" data-filter="unknown" aria-pressed="false">Unknown</button>
-        <button type="button" data-filter="network" aria-pressed="false">Network-exposed</button>
-        <button type="button" data-filter="readonly" aria-pressed="false">Protected/read-only</button>
+      <div class="filter-block">
+        <div class="controls-heading">
+          <span class="field-label">Find a listener</span>
+          <strong>Filter by what you need to review</strong>
+        </div>
+        <div class="filter-tools">
+          <label class="search-label" for="server-search">
+            Search
+            <input id="server-search" type="search" autocomplete="off" placeholder="Project, process, port, or URL" aria-label="Search visible listeners">
+          </label>
+          <div class="segmented" id="filters" role="group" aria-label="Filter visible listeners">
+            <button type="button" data-filter="all" class="active" aria-pressed="true"><span class="filter-label">All visible</span><span class="filter-count" data-filter-count="all">0</span></button>
+            <button type="button" data-filter="attention" aria-pressed="false"><span class="filter-label">Needs attention</span><span class="filter-count" data-filter-count="attention">0</span></button>
+            <button type="button" data-filter="unmanaged" aria-pressed="false"><span class="filter-label">Unmanaged</span><span class="filter-count" data-filter-count="unmanaged">0</span></button>
+            <button type="button" data-filter="long-running" aria-pressed="false"><span class="filter-label">Long-running</span><span class="filter-count" data-filter-count="long-running">0</span></button>
+            <button type="button" data-filter="dev" aria-pressed="false"><span class="filter-label">Dev servers</span><span class="filter-count" data-filter-count="dev">0</span></button>
+            <button type="button" data-filter="local-ai" aria-pressed="false"><span class="filter-label">Local AI</span><span class="filter-count" data-filter-count="local-ai">0</span></button>
+            <button type="button" data-filter="database" aria-pressed="false"><span class="filter-label">Databases</span><span class="filter-count" data-filter-count="database">0</span></button>
+            <button type="button" data-filter="helpers" aria-pressed="false"><span class="filter-label">Browser/editor helpers</span><span class="filter-count" data-filter-count="helpers">0</span></button>
+            <button type="button" data-filter="unknown" aria-pressed="false"><span class="filter-label">Unknown</span><span class="filter-count" data-filter-count="unknown">0</span></button>
+            <button type="button" data-filter="network" aria-pressed="false"><span class="filter-label">Network-exposed</span><span class="filter-count" data-filter-count="network">0</span></button>
+            <button type="button" data-filter="protected" aria-pressed="false"><span class="filter-label">Protected</span><span class="filter-count" data-filter-count="protected">0</span></button>
+            <button type="button" data-filter="readonly" aria-pressed="false"><span class="filter-label">Read-only / blocked</span><span class="filter-count" data-filter-count="readonly">0</span></button>
+          </div>
+        </div>
       </div>
       <label class="sort-label" for="sort">
         Sort visible listeners
@@ -69,6 +63,43 @@
     </section>
 
     <section id="servers" class="server-list" aria-live="polite" aria-label="Visible listener results"></section>
+
+    <section class="secondary-info" aria-label="Supporting information">
+      <details class="supporting-panel">
+        <summary>Scanner configuration and diagnostics</summary>
+        <section id="diagnostics" class="diagnostics" aria-label="Configuration and diagnostics"></section>
+      </details>
+      <details class="supporting-panel">
+        <summary>Privacy-safe diagnostics export</summary>
+        <section class="export-panel" aria-label="Privacy-safe diagnostics export">
+          <div class="export-header">
+            <div>
+              <span class="field-label">Diagnostics export</span>
+              <strong>Privacy-safe troubleshooting summary</strong>
+            </div>
+            <label class="sort-label" for="export-format">
+              Format
+              <select id="export-format" aria-label="Diagnostics export format">
+                <option value="markdown" selected>Markdown</option>
+                <option value="json">JSON</option>
+              </select>
+            </label>
+          </div>
+          <p class="export-notice">Exports are built from approved summary fields only. They exclude command lines, process trees, raw paths, secrets, response bodies, history records, and process lists.</p>
+          <div class="export-actions">
+            <button id="export-generate" type="button" aria-label="Generate diagnostics export preview">Generate Preview</button>
+            <button id="export-copy" type="button" aria-label="Copy generated diagnostics summary" disabled>Copy Summary</button>
+            <button id="export-download" type="button" aria-label="Download generated diagnostics summary" disabled>Download Summary</button>
+            <span id="export-status" class="scan-status" role="status" aria-live="polite">No preview generated.</span>
+          </div>
+          <pre id="export-preview" class="export-preview" tabindex="0" aria-label="Generated diagnostics export preview"></pre>
+        </section>
+      </details>
+      <details class="supporting-panel">
+        <summary>Project search boundaries and scan history</summary>
+        <section id="dev-roots" class="dev-roots" aria-label="Configured dev root search boundaries"></section>
+      </details>
+    </section>
   </main>
 
   <script src="/format.js"></script>

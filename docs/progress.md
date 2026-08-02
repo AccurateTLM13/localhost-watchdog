@@ -1,5 +1,108 @@
 # Progress Log
 
+## 2026-07-31 - Phase 8 PowerShell/.NET tray companion
+
+Scope completed:
+- Added `scripts/Start-LocalhostWatchdogTray.ps1`, a Windows PowerShell/.NET `NotifyIcon` companion that starts the existing Node backend only when `GET /api/health` is unavailable, opens the browser dashboard, refreshes visible/stale counts, and provides Open/Refresh/Quit tray actions.
+- Added a token-protected `POST /api/host/shutdown` host-control route. It can close only the companion-owned Watchdog backend and always returns `serversTerminated:false` and `actionExecuted:false`; it does not expose generic process-control capability.
+- Added companion contract tests covering NotifyIcon usage, backend ownership, host-token forwarding, and the absence of force-stop primitives.
+- Replaced the Tauri/Rust-only Phase 8 manual gate with the browser-plus-tray acceptance checklist in `docs/phase8-manual-test.md`.
+
+Remaining Phase 8 gate:
+- Manual Windows tray acceptance is still required. It must verify the tray menu, count/notification behavior, companion-owned backend shutdown, pre-existing backend preservation, and fixture-server survival.
+
+## 2026-07-31 - Phase 4 graceful-stop backend completed
+
+Scope completed:
+- Added the default Windows graceful-stop dispatcher used by the proof-gated execute route.
+- The dispatcher rechecks the live target PID/name, creation timestamp, and listener port owner in a local PowerShell helper, requests `CloseMainWindow` for GUI targets, or sends `CTRL+BREAK` to the verified PID's console process group for supported development runtimes.
+- Added a five-second helper timeout, safe error mapping, unsupported-platform handling, runtime allowlisting, and fail-closed behavior when the target does not expose a safe console path.
+- Added post-dispatch polling (up to five seconds at 500 ms intervals by default) so success is reported only after the target listener disappears; immediate port reassignment and scanner-unavailable states remain distinct failures.
+- Added real disposable Node and Python Windows integration tests using hidden, explicitly grouped console fixtures; the existing proof, audit, PID-reuse, protected-boundary, and listener-verification tests remain in the gate.
+
+Safety status:
+- The backend is single-target, proof-gated, audit-before-dispatch, final-revalidated, and post-action verified.
+- No force-kill, process-tree kill, restart, cleanup, bulk action, `process.kill`, `taskkill`, or `Stop-Process` primitive was added to production source.
+- A target that remains active is reported as failed; there is no automatic hard-stop escalation.
+- Existing unmanaged console processes without an independently verified process-group boundary fail closed. Phase 5's managed launcher should create that boundary when it starts a project.
+
+Verification:
+- `npm run lint` passes.
+- Focused Phase 4 execution/source-safety tests pass: 26/26.
+- At the Phase 4 boundary, full `npm test` reached 218/220; the two remaining failures were pre-existing Windows path-case assertions in `test/project-actions.test.js`, unrelated to the Phase 4 changes.
+
+## 2026-07-31 - Parallel Phase 5, 7, and 8 implementation slices
+
+Phase 5 managed start:
+- Added a versioned managed-launch contract shared by the launcher, start manager, and graceful-stop runtime allowlist.
+- The Windows direct-executable launcher validates the working directory and command, rejects shell wrappers and unsupported runtimes, launches with `CREATE_NEW_PROCESS_GROUP`, and returns PID, creation time, process name, process group, and selected port identity.
+- The start manager now uses that launcher by default on Windows, injects `PORT` when a selected port is available and not already configured, and rejects incomplete/incompatible launcher results before reporting a successful start.
+
+Phase 7 adoption:
+- Added high-confidence loopback-only adoption validation for direct-runtime Node/Vite/Next and supported Python server profiles; shell-wrapper candidates fail closed.
+- Added structured command extraction, secret-bearing argument rejection, protected port/process checks, project-root/CWD containment, duplicate ID/path checks, and registry validation before the injected config writer is called.
+
+Phase 8 tray shell:
+- Added native-host callbacks for open/hide/quit, refresh timestamps and safe failure states, idempotent close/quit behavior, and tests proving tray lifecycle actions never terminate dev servers.
+- Native Tauri/Rust packaging, tray assets, installer/signing, and manual Windows QA remain deferred because this repository has no native scaffolding yet.
+
+Phase 6 boundary at this point:
+- Restart implementation remained intentionally deferred until the Phase 5 launcher identity/process-group contract was stabilized. That contract is now stable and the follow-on Phase 6 work is recorded below.
+
+Verification after parallel slices:
+- `npm run lint` passes.
+- Focused Phase 5 launcher, Phase 7 adoption, Phase 8 tray, and Phase 4 execution/source-safety tests pass.
+- Full `npm test` reaches 229/231; the same two pre-existing Windows path-case assertions remain in `test/project-actions.test.js` and are unrelated to the parallel slices and launch-contract hardening.
+
+Managed-launch contract hardening:
+- Added `localhost-watchdog.managed-launch.v1` validation for supported direct runtimes, explicit process-group ownership, creation-time identity, and selected-port identity.
+- Start results now reject incomplete or incompatible launcher responses; restart results preserve the replacement process identity for the next Phase 6 health-check flow.
+- Adoption rejects shell-wrapper candidates that cannot satisfy the current direct-runtime contract, preventing projects from being saved in a form the launcher cannot safely manage.
+
+Project root identity migration:
+- Normalized registry and scanner project records now expose canonical `root` plus preserved `displayRoot`; legacy `path` input and root-only records migrate through compatibility fallbacks.
+- Internal ownership, duplicate, running-project, and safety comparisons use `root`; dashboard project details and API project listings expose `displayRoot` for presentation.
+- Updated registry, ownership, adoption, diagnostics, API, and UI tests to distinguish identity assertions from presentation assertions.
+- Full `npm test` passes: 234/234. `npm run lint` passes.
+
+## 2026-07-31 - Phase 6 managed restart completed
+
+Scope completed:
+- Added scanner-envelope normalization shared by managed start and restart so the real Windows scanner shape (`{ ok, servers }`) is handled without weakening injected fixture compatibility.
+- Replaced dispatch-only restart with verified orchestration: current managed identity revalidation → Phase 4 graceful stop → polling until the prior process identity and port are gone → Phase 5 managed start → polling until the replacement process identity is present on the expected port.
+- Added explicit fail-closed states for scanner unavailability, missing restart identity, stop timeout, port-owner change, start failure, startup identity mismatch/timeout, and startup revalidation failure. No force-kill or automatic rollback path was added.
+- Added privacy-safe bounded restart history with an injectable writer and the default `.localhost-watchdog/restart-history.jsonl` append target. History captures action state and identity references without command lines, paths, or secrets.
+- Added focused acceptance tests for scanner envelopes, successful verified restart, stop timeout, port reassignment, startup timeout, and preserved managed process identity.
+
+Verification:
+- `npm run lint` passes.
+- `git -c safe.directory=E:/localhost-watchdog diff --check` passes.
+- Full `npm test` passes: 238/238.
+
+## 2026-07-31 - Phase 7 adoption/restart and Phase 8 tray acceptance completed
+
+Phase 7:
+- Added the default atomic project-registry writer so an explicit adoption save persists to `config/projects.json` without replacing the existing registry until the new file is ready.
+- Added a cross-phase acceptance fixture that adopts a high-confidence direct-runtime record, reads the persisted managed project through the same registry, and restarts it through the Phase 6 identity/port/startup-health contract.
+- Shell-wrapper, protected, unknown, low-confidence, non-loopback, and invalid-root candidates remain fail-closed.
+
+Phase 8:
+- Tray refresh now accepts the real scanner envelope as well as test-array snapshots.
+- Added native-host badge updates for visible server count, safe stale/refresh/badge notification handling, and acceptance coverage for open → hide → quit while proving `serversTerminated:false` throughout.
+- Native Tauri/Rust packaging, tray assets, installer/signing, and manual Windows desktop QA remain host-owned follow-up work; no native scaffold exists in this repository.
+
+## 2026-07-31 - Phase 8 native-host bridge started
+
+- Added `src/tray/native-host.js` as the stable Tauri/Win32-facing bridge for initialization, menu dispatch, window-close handling, and safe state retrieval.
+- The bridge deliberately exposes no process-control capability; every result preserves `actionExecuted:false` and `serversTerminated:false` for tray lifecycle operations.
+- Added bridge acceptance tests for scanner-envelope initialization, badge state, open/hide/quit forwarding, and unsupported-action rejection.
+- Added `docs/phase8-manual-test.md` with the current backend smoke test, native prerequisites, exact tray acceptance cases, artifact capture requirements, and failure boundary.
+- Native build and desktop QA remain blocked until the host has Rust/Tauri tooling and a native scaffold.
+
+Verification:
+- Focused adoption/restart/tray acceptance tests pass.
+- Full `npm test`, lint, and diff checks are rerun after this phase update.
+
 ## 2026-07-11 - Phase B/C execution proof and guarded stop execution path
 
 Scope completed:
@@ -7,7 +110,7 @@ Scope completed:
 - Added short-lived single-use execution proofs issued only after accepted confirmation; proofs are stored as hashes, bound to the accepted confirmation target, and consumed before final execution revalidation.
 - Added a protected `POST /api/actions/stop/execute` route that requires the local session/CSRF envelope plus an execution access token and idempotency key.
 - Split real execution mode from the existing non-destructive simulation path so `/api/actions/stop/simulate-execution` remains available for simulator checks.
-- Added a guarded graceful-stop dispatcher seam and post-action verification flow for exact target listener disappearance, listener-still-active, respawn/reassignment, and verification-unavailable outcomes. The default dispatcher fails closed unless a platform-safe backend is supplied.
+- Added a guarded graceful-stop dispatcher seam and post-action verification flow for exact target listener disappearance, listener-still-active, respawn/reassignment, and verification-unavailable outcomes. The default dispatcher was initially fail-closed; Phase 4's Windows backend is recorded above.
 - Extended execution audit records to carry execution authorization/action flags and added tests for proof issuance, proof replay, audit-failure blocking before dispatch, successful injected stop dispatch, listener-still-active reporting, and API proof forwarding.
 
 Safety status:

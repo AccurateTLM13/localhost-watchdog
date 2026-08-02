@@ -1,6 +1,6 @@
 "use strict";
 
-const { findProjectForRecord, isInsideConfiguredRoot, loadWatchdogConfig, redactConfiguredPath } = require("../config/load");
+const { findProjectForRecord, isInsideConfiguredRoot, loadWatchdogConfig, normalizeProjectRoot, projectDisplayRootSource } = require("../config/load");
 const {
   BROWSER_NAMES,
   DATABASE_NAMES,
@@ -29,13 +29,14 @@ function classifyReadOnly(record, options = {}) {
   const config = options.config || loadWatchdogConfig();
   const safetyConfig = config.safety;
   const configuredProject = findProjectForRecord(record, config.projects);
-  const project = record.project || (configuredProject ? {
+  const project = record.project ? normalizeRecordProject(record.project) : (configuredProject ? {
     name: configuredProject.name || configuredProject.id || null,
-    root: redactConfiguredPath(configuredProject.path) || null,
+    root: configuredProject.root || normalizeProjectRoot(configuredProject.root || configuredProject.path) || null,
+    displayRoot: projectDisplayRootSource(configuredProject) || null,
     confidence: 90,
     source: "config-project",
     evidence: ["record path matched configured project path"],
-    workingDirectory: redactConfiguredPath(configuredProject.path) || null
+    workingDirectory: configuredProject.root || normalizeProjectRoot(configuredProject.root || configuredProject.path) || null
   } : null);
   const evidence = [];
   const warnings = [];
@@ -155,6 +156,16 @@ function classifyReadOnly(record, options = {}) {
     httpProbe: {
       attempted: false
     }
+  };
+}
+
+function normalizeRecordProject(project = {}) {
+  const sourceRoot = project.root || project.path;
+  const root = normalizeProjectRoot(sourceRoot) || project.root || null;
+  return {
+    ...project,
+    root,
+    displayRoot: project.displayRoot || project.root || project.path || root
   };
 }
 

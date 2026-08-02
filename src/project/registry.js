@@ -2,7 +2,15 @@
 
 const fs = require("node:fs");
 const path = require("node:path");
-const { expandEnvPath, loadWatchdogConfig, normalizePath, redactConfiguredPath } = require("../config/load");
+const {
+  expandEnvPath,
+  loadWatchdogConfig,
+  normalizePath,
+  normalizeProjectRoot,
+  preserveProjectDisplayRoot,
+  projectDisplayRootSource,
+  projectRootSource
+} = require("../config/load");
 
 function createProjectRegistry(options = {}) {
   const configProvider = options.configProvider || (() => loadWatchdogConfig(options.configOptions || {}));
@@ -33,16 +41,17 @@ function normalizeProjects(projectsConfig = {}, options = {}) {
 
 function normalizeProject(project = {}, options = {}) {
   const start = normalizeStartConfig(project);
-  const expandedPath = expandEnvPath(project.path);
-  const normalized = expandedPath ? normalizePath(expandedPath) : null;
-  const expandedCwd = expandEnvPath(start.cwd || project.path);
+  const rootSource = projectRootSource(project);
+  const normalized = normalizeProjectRoot(rootSource);
+  const displayRoot = preserveProjectDisplayRoot(projectDisplayRootSource(project));
+  const expandedCwd = expandEnvPath(start.cwd || rootSource);
   const normalizedCwd = expandedCwd ? normalizePath(expandedCwd) : normalized;
   const validation = validateProject(project, normalized, { ...options, start, normalizedCwd });
   return {
     id: safeString(project.id),
     name: safeString(project.name || project.id),
-    path: normalized,
-    displayPath: redactConfiguredPath(expandedPath || project.path),
+    root: normalized,
+    displayRoot,
     managed: project.managed === true || Boolean(start.command),
     startCommand: start.command,
     startArgs: start.args,

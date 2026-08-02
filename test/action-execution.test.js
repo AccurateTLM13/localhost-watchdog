@@ -172,7 +172,9 @@ test("real stop execution reports listener still active after dispatch", async (
   const record = devRecord();
   const { dryRun, confirmation, execution, session } = await readyManagers(record, {
     gracefulStop: async () => ({ ok: true }),
-    executionPostActionScanProvider: async () => ({ servers: [record] })
+    executionPostActionScanProvider: async () => ({ servers: [record] }),
+    postActionTimeoutMs: 25,
+    postActionPollMs: 5
   });
 
   const created = await confirmation.createConfirmation({
@@ -838,6 +840,8 @@ async function readyManagers(record, overrides = {}) {
     confirmationManager: confirmation,
     scanProvider: overrides.executionScanProvider || (async () => ({ servers: [record] })),
     postActionScanProvider: overrides.executionPostActionScanProvider || overrides.executionScanProvider || (async () => ({ servers: [record] })),
+    postActionTimeoutMs: overrides.postActionTimeoutMs,
+    postActionPollMs: overrides.postActionPollMs,
     auditWriter: overrides.executionAuditWriter || (() => {}),
     gracefulStop: overrides.gracefulStop,
     clock: () => NOW,

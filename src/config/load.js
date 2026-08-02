@@ -37,9 +37,8 @@ function readJsonWithFallback(primaryPath, fallbackPath) {
 
 function normalizeConfig(config, options = {}) {
   const root = options.root || REPO_ROOT;
-  const projectRoots = (config.projects.projects || [])
-    .map((project) => project.path)
-    .filter(Boolean);
+  const normalizedProjects = (config.projects.projects || []).map(normalizeConfiguredProject);
+  const projectRoots = normalizedProjects.map((project) => project.root).filter(Boolean);
   const configuredDevRoots = (config.devRoots && config.devRoots.devRoots) || [];
   const normalizedDevRoots = normalizePathList([
     ...(config.safety.devRoots || []),
@@ -69,7 +68,7 @@ function normalizeConfig(config, options = {}) {
     },
     projects: {
       ...config.projects,
-      projects: config.projects.projects || []
+      projects: normalizedProjects
     },
     devRoots: {
       version: config.devRoots ? config.devRoots.version || 1 : 1,
@@ -200,13 +199,55 @@ function lowerList(values) {
 function findProjectForRecord(record, projectsConfig) {
   const haystack = lowerPath(`${record.commandLine || ""} ${record.executablePath || ""}`);
   for (const project of projectsConfig.projects || []) {
-    if (!project.path) continue;
-    const projectPath = expandEnvPath(project.path).replace(/\//g, "\\").toLowerCase();
-    if (haystack.includes(projectPath)) {
+    const projectPath = normalizeProjectRoot(projectRootSource(project));
+    if (projectPath && containsPathIdentity(haystack, projectPath)) {
       return project;
     }
   }
   return null;
+}
+
+function normalizeConfiguredProject(project = {}) {
+  const rootSource = projectRootSource(project);
+  const root = normalizeProjectRoot(rootSource);
+  const displayRoot = preserveProjectDisplayRoot(projectDisplayRootSource(project));
+  const rest = Object.fromEntries(Object.entries(project).filter(([key]) => key !== "path"));
+  return { ...rest, root, displayRoot };
+}
+
+function projectRootSource(project = {}) {
+  return project && (project.root != null ? project.root : project.path);
+}
+
+function projectDisplayRootSource(project = {}) {
+  return project && (project.displayRoot != null
+    ? project.displayRoot
+    : project.root != null
+      ? project.root
+      : project.path);
+}
+
+function normalizeProjectRoot(value) {
+  const expanded = expandEnvPath(value);
+  return expanded ? normalizePath(expanded) : null;
+}
+
+function preserveProjectDisplayRoot(value) {
+  const expanded = expandEnvPath(value);
+  if (!expanded) return null;
+  return String(expanded).trim().replace(/\//g, "\\").replace(/[\\]+$/, "");
+}
+
+function containsPathIdentity(haystack, identity) {
+  let offset = haystack.indexOf(identity);
+  while (offset >= 0) {
+    const before = offset === 0 ? "" : haystack[offset - 1];
+    const end = offset + identity.length;
+    const after = end >= haystack.length ? "" : haystack[end];
+    if ((!before || /[\s"'=:\\/]/.test(before)) && (!after || /[\s"'\\/]/.test(after))) return true;
+    offset = haystack.indexOf(identity, offset + 1);
+  }
+  return false;
 }
 
 function isInsideConfiguredRoot(value, roots) {
@@ -241,5 +282,9 @@ module.exports = {
   normalizePortList,
   normalizePortRanges,
   normalizePositiveInteger,
+  normalizeProjectRoot,
+  preserveProjectDisplayRoot,
+  projectDisplayRootSource,
+  projectRootSource,
   redactConfiguredPath
 };

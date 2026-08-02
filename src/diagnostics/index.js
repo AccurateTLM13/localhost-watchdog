@@ -94,7 +94,10 @@ function buildConfigurationDiagnostics(sources, config, root, io) {
   const configuredDevRoots = [
     ...((sources.safety.data && sources.safety.data.devRoots) || []).map((value) => ({ value, source: sources.safety.sourceFile })),
     ...((sources.devRoots.data && sources.devRoots.data.devRoots) || []).map((value) => ({ value, source: sources.devRoots.sourceFile })),
-    ...((sources.projects.data && sources.projects.data.projects || []).filter((project) => project.path).map((project) => ({ value: project.path, source: sources.projects.sourceFile })))
+    ...((sources.projects.data && sources.projects.data.projects || []).map((project) => ({
+      value: project.displayRoot || project.root || project.path,
+      source: sources.projects.sourceFile
+    })).filter((project) => project.value))
   ];
   const devRoots = configuredDevRoots.map((entry) => inspectDevRoot(entry.value, entry.source, io));
 

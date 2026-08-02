@@ -18,11 +18,16 @@ const css = readFileSync(join(__dirname, "..", "src", "ui", "styles.css"), "utf8
 test("dashboard shell exposes accessible names for refresh, filters, and sort control", () => {
   assert.match(indexHtml, /id="scan-status"[^>]*role="status"[^>]*aria-live="polite"/);
   assert.match(indexHtml, /aria-label="Refresh scanner data"/);
+  assert.match(indexHtml, /id="watch-toggle"[^>]*aria-pressed="false"/);
+  assert.match(indexHtml, /aria-label="Turn on automatic rescans"/);
+  assert.match(indexHtml, /id="server-search"[^>]*type="search"/);
+  assert.match(indexHtml, /aria-label="Search visible listeners"/);
   assert.match(indexHtml, /id="filters"[^>]*role="group"[^>]*aria-label="Filter visible listeners"/);
   assert.match(indexHtml, /data-filter="all"[^>]*aria-pressed="true"/);
   assert.match(indexHtml, /data-filter="dev"[^>]*aria-pressed="false"/);
   assert.match(indexHtml, /<label class="sort-label" for="sort">/);
   assert.match(indexHtml, /Sort visible listeners/);
+  assert.match(indexHtml, /<details class="supporting-panel">/);
 });
 
 test("server open links include context in accessible labels", () => {

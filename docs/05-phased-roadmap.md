@@ -152,9 +152,11 @@ Testing:
 
 Exit criteria:
 
-- Can stop a known test server.
-- Cannot stop protected fixtures.
-- History records every attempt.
+- Can stop a known Node or Python fixture server through the proof-gated Windows graceful-stop backend.
+- Cannot stop protected fixtures or unsupported/non-grouped targets.
+- History/audit records every attempt, including dispatch and verification failures.
+
+Phase 4 status: completed 2026-07-31. The default backend uses `CloseMainWindow` for GUI targets and a targeted `CTRL+BREAK` console signal for supported runtimes. It never force-stops, kills a process tree, or escalates automatically. The managed-project launcher in Phase 5 must establish an explicit Windows console process group when it wants console-signal stop support.
 
 ## Phase 5 — Managed Projects and Start Button
 
@@ -181,6 +183,8 @@ Exit criteria:
 - User can start a configured project.
 - Tool detects when the project is running.
 - Tool does not start duplicate processes accidentally.
+
+Phase 5 status: completed 2026-07-31. The Windows direct-executable launcher implements the versioned managed-launch contract: absolute working directory, supported direct runtime, explicit process group owned by the launched PID, creation-time identity, and selected-port identity. Shell-wrapper commands such as `npm.cmd` remain fail-closed until wrapper/listener reconciliation is designed. The start manager rejects incomplete or incompatible launcher results before reporting a successful start.
 
 ## Phase 6 — Restart Flow
 
@@ -213,6 +217,8 @@ Exit criteria:
 - Restart reliably works on fixture project.
 - Failed restarts do not leave confusing state.
 
+Phase 6 status: completed 2026-07-31. The protected restart endpoint now accepts both array and scanner-envelope snapshots, revalidates the managed PID/process/listener/port identity, reuses the Phase 4 graceful-stop dispatcher, waits for the previous identity and port to disappear, dispatches the Phase 5 managed launcher, and waits for the replacement process identity to reappear on the expected port. Restart history is retained in memory and appended to `.localhost-watchdog/restart-history.jsonl` through a privacy-safe allowlist. Stop timeout, port-owner change, startup timeout, scanner-unavailable, start failure, and successful fixture paths are covered by tests. There is no force-kill or automatic rollback; failure responses explicitly identify the completed boundary.
+
 ## Phase 7 — Adopt Detected Server
 
 Goal: turn a safely detected external server into a managed project.
@@ -234,22 +240,24 @@ Exit criteria:
 
 - A manually started Vite/Next/Python server can be adopted and restarted later.
 
+Phase 7 status: completed 2026-07-31. Safe loopback/high-confidence profile extraction, structured adoption drafts, protected-path/port checks, duplicate registry validation, direct-runtime launch-contract compatibility checks, default atomic registry persistence, and the complete adoption → restart acceptance path are implemented. Shell-wrapper candidates are rejected rather than saved as projects that Phase 5 cannot safely launch.
+
 ## Phase 8 — Tray App Wrapper
 
 Goal: provide the taskbar/tray experience.
 
 Recommended stack:
 
-- Tauri + existing web UI.
-- Keep scanner/action logic reusable.
+- PowerShell/.NET `NotifyIcon` companion + existing Node/browser UI.
+- Keep scanner/action logic reusable and keep the tray host lifecycle-only.
 
 Deliverables:
 
 - Tray icon.
-- Popup window.
-- Live count badge.
+- Browser dashboard open action.
+- Live visible/stale count in tooltip and notifications.
 - Open dashboard action.
-- Quit action.
+- Token-protected Quit action for the companion-owned Node backend.
 - Native notifications.
 
 Testing:
@@ -261,7 +269,20 @@ Testing:
 
 Exit criteria:
 
-- User can open the popup from taskbar/tray and manage servers.
+- User can open the dashboard from the tray, refresh local server state, and quit the Watchdog companion without changing a managed dev server.
+
+Phase 8 status: the reusable native-host bridge and the Windows PowerShell/.NET tray companion are implemented. The companion consumes the existing scanner API, opens the browser dashboard, reports visible/stale status, and can close only a backend it started through the token-protected host-control route. Manual Windows tray QA remains the final host-owned gate. See `docs/phase8-manual-test.md` for the exact manual checklist.
+
+## Parallelization review for Phases 5-8
+
+The phases are not one fully serial chain. The safest parallel split is:
+
+- Phase 5 is the critical backend track. It owns the managed-project launcher, working-directory validation, port selection, process-group creation, and running-status reconciliation.
+- Phase 7 can proceed in parallel with the early Phase 5 work for candidate validation, command/directory extraction, protected/unknown rejection, draft editing, and registry persistence. Its “adopt then restart” acceptance test must wait for Phase 6.
+- Phase 8 can proceed in parallel as a packaging/integration track because the tray companion calls reusable dashboard/refresh/quit adapters. The PowerShell/.NET host does not need the Phase 5 launcher, while wiring tray controls to start/restart should wait for the backend route contracts.
+- Phase 6 follows the stabilized Phase 5 launcher contract. Its restart implementation now reuses the Phase 4 stop backend, adds port-free verification and startup health checks, and remains isolated from generic scanner `safeToRestart` flags.
+
+Recommended order: run Phase 5 backend and the independent portions of Phases 7 and 8 in parallel; then complete Phase 6 against the stabilized managed-launcher contract; finally run the cross-phase adoption/restart and native tray acceptance tests together.
 
 ## Phase 9 — Advanced Actions
 

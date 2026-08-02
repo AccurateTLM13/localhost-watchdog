@@ -18,6 +18,12 @@
     "editor-helper"
   ]);
 
+  const MANAGED_CATEGORIES = new Set([
+    ...DEV_CATEGORIES,
+    "local-ai-server",
+    "database"
+  ]);
+
   function formatMs(value) {
     if (value == null || value === "") return "n/a";
     if (!Number.isFinite(Number(value))) return "n/a";
@@ -58,15 +64,52 @@
     return "Unreachable or non-HTTP";
   }
 
+  function isProtected(record) {
+    return record.category === "system-or-protected" || record.hiddenReason === "protected";
+  }
+
+  function isNetworkExposed(record) {
+    return Boolean(record.networkExposure && record.networkExposure.warning);
+  }
+
+  function isUnmanaged(record) {
+    return MANAGED_CATEGORIES.has(record.category) && !record.project;
+  }
+
+  function attentionReasons(record) {
+    if (isProtected(record)) return [];
+
+    const lifecycle = record.lifecycleContext || {};
+    const reasons = [];
+    if (lifecycle.staleCandidate || lifecycle.label === "stale-candidate") reasons.push("Stale candidate");
+    if (lifecycle.detachedCandidate || lifecycle.label === "possibly-detached") reasons.push("Possibly detached");
+    if (isNetworkExposed(record)) reasons.push("Network exposed");
+    if (record.category === "unknown-listener") reasons.push("Unknown listener");
+    if (record.confidenceLevel === "low") reasons.push("Low confidence");
+    return reasons;
+  }
+
+  function isReadOnly(record) {
+    return record.safeToStop !== true || (record.actionEligibility && ["inspect-only", "ineligible"].includes(record.actionEligibility.state));
+  }
+
+  function isLongRunning(record) {
+    return Boolean(record.lifecycleContext && record.lifecycleContext.label === "long-running");
+  }
+
   function matchesFilter(record, filter) {
     if (filter === "all") return true;
     if (filter === "dev") return DEV_CATEGORIES.has(record.category);
+    if (filter === "attention") return attentionReasons(record).length > 0;
+    if (filter === "unmanaged") return isUnmanaged(record);
+    if (filter === "long-running") return isLongRunning(record);
     if (filter === "local-ai") return record.category === "local-ai-server";
     if (filter === "database") return record.category === "database";
     if (filter === "helpers") return HELPER_CATEGORIES.has(record.category);
     if (filter === "unknown") return record.category === "unknown-listener";
-    if (filter === "network") return Boolean(record.networkExposure && record.networkExposure.warning);
-    if (filter === "readonly") return record.category === "system-or-protected" || record.safeToStop === false;
+    if (filter === "network") return isNetworkExposed(record);
+    if (filter === "protected") return isProtected(record);
+    if (filter === "readonly") return isReadOnly(record);
     return true;
   }
 
@@ -84,8 +127,13 @@
       visible: snapshot.totals ? snapshot.totals.visible : servers.length,
       hidden: snapshot.totals ? snapshot.totals.hidden : 0,
       reachable: servers.filter((record) => record.httpProbe && record.httpProbe.reachable).length,
-      networkExposed: servers.filter((record) => record.networkExposure && record.networkExposure.warning).length,
-      unknown: servers.filter((record) => record.category === "unknown-listener").length
+      networkExposed: servers.filter(isNetworkExposed).length,
+      unknown: servers.filter((record) => record.category === "unknown-listener").length,
+      attention: servers.filter((record) => attentionReasons(record).length > 0).length,
+      unmanaged: servers.filter(isUnmanaged).length,
+      protected: servers.filter(isProtected).length,
+      readonly: servers.filter(isReadOnly).length,
+      hiddenBreakdown: snapshot.hidden || {}
     };
   }
 
@@ -105,6 +153,12 @@
     formatConfidence,
     formatMs,
     httpProbeLabel,
+    attentionReasons,
+    isProtected,
+    isReadOnly,
+    isUnmanaged,
+    isNetworkExposed,
+    isLongRunning,
     matchesFilter,
     safetyLabel,
     safetyState,

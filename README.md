@@ -2,7 +2,7 @@
 
 Localhost Watchdog is a Windows-first local development server scanner. The current dashboard and built-in scanner remain inspect-first: they scan local listeners, classify likely development servers, probe localhost HTTP metadata, detect project ownership, report launcher/process-tree context, add cautious lifecycle context, and compare privacy-safe local scan history.
 
-The action path now includes dry-run, confirmation, simulation, and a guarded proof-gated stop execution route. The default graceful-stop backend fails closed unless a platform-safe dispatcher is explicitly supplied; no force stop, restart, tray, bulk cleanup, process-tree killing, `process.kill`, `taskkill`, or `Stop-Process` primitive exists in this phase.
+The action path now includes dry-run, confirmation, simulation, a guarded proof-gated stop execution route, and protected restart for explicitly managed projects. On Windows, the default graceful-stop backend uses a local helper that requests `CloseMainWindow` for GUI runtimes or sends a targeted `CTRL+BREAK` console signal to an explicitly grouped development runtime. It fails closed when the verified PID/name, console group, or helper is unavailable. There is still no force stop, bulk cleanup, process-tree killing, `process.kill`, `taskkill`, or `Stop-Process` primitive.
 
 ## Commands
 
@@ -15,7 +15,7 @@ npm start
 
 `npm run scan` prints a JSON snapshot of visible likely local development listeners plus hidden counts. `npm start` runs the read-only dashboard at `http://127.0.0.1:4545`.
 
-Read-only API endpoints:
+Local API endpoints:
 
 - `GET /api/servers`
 - `GET /api/diagnostics`
@@ -30,8 +30,15 @@ Read-only API endpoints:
 - `POST /api/actions/stop/confirmations/cancel`
 - `POST /api/actions/stop/simulate-execution`
 - `POST /api/actions/stop/execute`
+- `GET /api/projects`
+- `POST /api/projects/start`
+- `POST /api/projects/restart`
+- `POST /api/projects/adopt/draft`
+- `POST /api/projects/adopt`
 
-The dry-run, confirmation, and simulation endpoints perform safety revalidation and intent recording only. `POST /api/actions/stop/execute` requires a short-lived execution proof issued by accepted confirmation, repeats final revalidation, requires audit availability, and uses an injected graceful-stop dispatcher. Without that dispatcher, the endpoint fails closed and does not stop, restart, signal, kill, clean up, or mutate any process.
+The dry-run, confirmation, and simulation endpoints perform safety revalidation and intent recording only. `POST /api/actions/stop/execute` requires a short-lived execution proof issued by accepted confirmation, repeats final revalidation, requires audit availability, and dispatches one exact verified target through the Windows graceful-stop backend. The backend supports `node.exe`, `python.exe`, `java.exe`, `javaw.exe`, `bun.exe`, and `deno.exe`; unsupported or non-grouped targets fail closed. No automatic escalation occurs when a target remains active.
+
+Phase 4 is complete for the supervised single-target stop path. Phase 5's direct-executable managed launcher creates the target as its own Windows console process group; existing unmanaged processes without that safe signal boundary remain read-only until they are adopted or otherwise have verified graceful-stop support. Phase 6 adds a managed-only restart flow that verifies stop completion, port release, managed start, and startup identity before reporting success.
 
 ## Scanner Strategy
 
@@ -302,7 +309,17 @@ Optional user dev roots can be configured in `config/dev-roots.json`:
 
 Only existing absolute directories are accepted as ownership search boundaries. Project paths explicitly listed in `config/projects.json` are still trusted as configured projects even when they sit outside dev roots. API and dashboard output redact user-profile roots as `%USERPROFILE%`.
 
-Managed project entries may also include `startCommand`, `preferredPort`, `portStrategy`, `runtime`, and `tags`. Start and restart requests are fail-closed unless the server is created with an injected project launcher; the repository does not spawn arbitrary commands by default. `GET /api/projects` lists validated configured projects, while protected `POST /api/projects/start` and `POST /api/projects/restart` require the same local session and CSRF checks used by action execution endpoints. Protected `POST /api/projects/adopt/draft` prepares an editable high-confidence adoption draft, and `POST /api/projects/adopt` can save that detected server as a managed project only through an injected config writer. The tray shell adapter exposes non-destructive Open Watchdog, Refresh, and Quit behaviors; close/quit does not terminate local servers.
+Managed project entries use explicit `root` and `displayRoot` fields. `root` is the canonical machine identity used for matching and safety checks; `displayRoot` preserves the human-readable path for dashboard, diagnostics, logs, and exports. Legacy `path` entries migrate through the same `root`/`displayRoot` fallback. Structured `start` config (`command`, `args`, `cwd`, `env`), `preferredPort`, `portStrategy`, `runtime`, and `tags` are also supported. Protected `POST /api/projects/start` uses a versioned Windows managed-launch contract for validated direct runtime executables, starts them in an explicit process group, passes the selected port through `PORT` when unset, and returns a complete PID plus creation-time identity. The contract requires the process group ID to equal the launched PID and the runtime to be supported by the Phase 4 graceful-stop backend. Shell-wrapper commands such as `npm.cmd` fail closed until a later contract can safely reconcile wrapper and listener identities. Protected `POST /api/projects/restart` revalidates the current managed identity, performs graceful stop, polls until the prior identity and port disappear, dispatches the managed start, and waits for the replacement process identity to appear on the expected port. Stop, port-owner, startup, and scanner failures are returned as explicit states; no force-kill or automatic rollback is attempted. `GET /api/projects` lists validated configured projects, while protected project routes require the same local session and CSRF checks used by action execution endpoints. Adoption now only accepts high-confidence loopback Node/Python profiles that reduce to the same direct-runtime contract, with protected-path/port checks, duplicate project/path checks, and injected config persistence. The tray shell adapter exposes non-destructive Open Watchdog, Refresh, and Quit behaviors; close/quit does not terminate local servers.
+
+## Windows Tray Companion
+
+Phase 8 uses the existing Node server and browser dashboard with a Windows PowerShell/.NET tray companion, so Rust and Tauri are not required. From the repository root, launch it in an STA PowerShell session:
+
+```powershell
+powershell.exe -NoProfile -STA -File .\scripts\Start-LocalhostWatchdogTray.ps1
+```
+
+The companion starts `node watchdog.js serve` only when `GET /api/health` is unavailable, opens `http://127.0.0.1:4545` in the default browser, provides Open/Refresh/Quit tray actions, and shows visible/stale server status through the tray tooltip and notifications. Quit can close only a backend started by that companion through a token-protected local host-control route; it never stops managed dev servers, uses process-tree termination, or force-kills a process. If a healthy backend already exists, the companion does not claim ownership and leaves that backend running when the tray exits. See [docs/phase8-manual-test.md](docs/phase8-manual-test.md) for the manual Windows acceptance checklist.
 
 See [docs/scanner-policy.md](docs/scanner-policy.md) for redaction, fixture, protected-process, and confidence rules.
 

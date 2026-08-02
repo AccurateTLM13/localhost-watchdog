@@ -4,7 +4,7 @@
 
 Every scanner result should normalize into this shape.
 
-Phase 3 note: the current app is still read-only. Current classifier categories are `node-dev-server`, `python-dev-server`, `local-ai-server`, `database`, `browser-helper`, `editor-helper`, `java-dev-server`, `system-or-protected`, and `unknown-listener`. Current scanner records include `confidenceLevel`, structured `evidence`, `networkExposure`, and read-only `httpProbe` metadata. Destructive flags remain `false` until a later safe-action phase.
+Phase 3 note: the generic scanner and dashboard remain read-only. Current classifier categories are `node-dev-server`, `python-dev-server`, `local-ai-server`, `database`, `browser-helper`, `editor-helper`, `java-dev-server`, `system-or-protected`, and `unknown-listener`. Current scanner records include `confidenceLevel`, structured `evidence`, `networkExposure`, and read-only `httpProbe` metadata. Generic destructive flags remain `false`; managed project actions use a separate explicit registry contract.
 
 Phase 4 dashboard note: the dashboard consumes this same API shape directly. It does not add permissions or infer destructive actions client-side. UI filters are presentation-only.
 
@@ -13,6 +13,12 @@ Phase 4.5 test note: dashboard smoke tests use a fake snapshot with the same `/a
 Phase 4.6 accessibility note: dashboard accessibility tests validate semantic rendering and keyboard-facing labels from the same API shape. They do not alter scanner data or introduce client-side action permissions.
 
 Phase 5 ownership note: current records may include a read-only `project` field. Project ownership can add evidence and raise display confidence, but it does not grant action permissions.
+
+Managed-launch note: successful project starts use `localhost-watchdog.managed-launch.v1` and return a complete PID, creation-time `processInstanceId`, process-group ID equal to the PID, supported runtime name, and selected port identity. Incomplete launcher results are not reported as successful starts.
+
+Host-control note: the Windows tray companion may call `POST /api/host/shutdown` only with the ephemeral `X-Watchdog-Host-Token` issued to the backend process it started. A successful response is `{ "state": "watchdog-shutdown-requested", "actionExecuted": false, "serversTerminated": false }`; this route closes only the Watchdog HTTP server and is not a generic process-control or managed-project action.
+
+Project-root note: normalized project records expose canonical `root` and presentation-only `displayRoot`. Older records with only `root` use `displayRoot ?? root`; legacy `path` input is migrated into the same shape. Internal matching and safety validation use `root` only.
 
 Phase 6A dev-root note: scanner responses may include redacted configured dev-root search boundaries. These roots constrain project ownership detection and do not grant action permissions.
 
@@ -482,7 +488,13 @@ Shape:
     {
       "id": "lighthouse-handoff",
       "name": "Lighthouse Handoff",
-    "path": "%USERPROFILE%\\Desktop\\lighthouse-handoff",
+      "root": "%USERPROFILE%\\Desktop\\lighthouse-handoff",
+      "displayRoot": "C:\\Users\\JP\\Desktop\\lighthouse-handoff",
+      "start": {
+        "command": "node",
+        "args": ["server.js"],
+        "cwd": "%USERPROFILE%\\Desktop\\lighthouse-handoff"
+      },
     "preferredPort": 3000,
     "runtime": "node",
     "tags": ["chrome-extension", "local-ai"]
@@ -491,7 +503,7 @@ Shape:
 }
 ```
 
-Project configuration is read-only in the current implementation. It identifies known project roots and display metadata for ownership detection; it does not define start, stop, restart, cleanup, or remediation behavior.
+Project configuration is the explicit source of truth for managed start/restart provenance. `root` is canonical and `displayRoot` is presentation-only; legacy `path` records migrate to both fields. The structured start command, working directory, environment, runtime, preferred port, and port strategy are validated before launch. Generic scanner records still keep `safeToStop`, `safeToRestart`, and `bulkStoppable` false; managed project actions use the separate protected project-action contract.
 
 ## Safety Config
 
@@ -551,7 +563,7 @@ Shape:
 }
 ```
 
-## Current Read-Only API Endpoints
+## Current API Endpoints
 
 ```txt
 GET    /api/health
@@ -559,6 +571,7 @@ GET    /api/servers
 GET    /api/diagnostics
 GET    /api/diagnostics/export
 GET    /api/diagnostics/export?format=json
+GET    /api/projects
 POST   /api/session
 POST   /api/actions/stop/dry-run
 POST   /api/actions/dry-runs/status
@@ -566,11 +579,15 @@ POST   /api/actions/stop/confirmations
 POST   /api/actions/stop/confirmations/submit
 POST   /api/actions/stop/confirmations/status
 POST   /api/actions/stop/confirmations/cancel
+POST   /api/projects/start
+POST   /api/projects/restart
+POST   /api/projects/adopt/draft
+POST   /api/projects/adopt
 ```
 
-No current implemented endpoint performs stop, restart, kill, cleanup, upload, sharing, remediation, project mutation, settings mutation, or bulk action behavior.
+The generic scanner and dashboard remain inspect-first, and no generic `/api/servers/:id/stop` or bulk action exists. The protected managed-project endpoints are the narrow exceptions: `/api/projects/start` dispatches only a validated direct-runtime launch, and `/api/projects/restart` performs verified graceful stop, port-free wait, managed start, and startup identity health checking. Neither endpoint force-kills, traverses a process tree, escalates automatically, or reconstructs commands from observed process metadata.
 
-The dry-run endpoints perform revalidation only. The confirmation endpoints record explicit user intent only. They do not execute process signals, terminate processes, restart processes, mutate projects, or enable bulk actions.
+The dry-run endpoints perform revalidation only. The confirmation endpoints record explicit user intent only. They do not execute process signals, terminate processes, restart processes, mutate projects, or enable bulk actions. Managed project start/restart/adoption requests use the same local session and CSRF protection but are governed by their own explicit project registry and launch identity contracts.
 
 ## Dry-Run Eligibility API
 

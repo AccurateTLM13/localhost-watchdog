@@ -2,7 +2,16 @@
 
 const { existsSync, readFileSync, statSync } = require("node:fs");
 const path = require("node:path");
-const { expandEnvPath, findProjectForRecord, isInsideConfiguredRoot, redactConfiguredPath } = require("../config/load");
+const {
+  expandEnvPath,
+  findProjectForRecord,
+  isInsideConfiguredRoot,
+  normalizeProjectRoot,
+  preserveProjectDisplayRoot,
+  projectDisplayRootSource,
+  projectRootSource,
+  redactConfiguredPath
+} = require("../config/load");
 
 const MARKERS = [
   { file: "package.json", type: "package-json" },
@@ -25,11 +34,13 @@ function detectProjectOwnership(record, config = {}) {
   const projectsConfig = config.projects || { projects: [] };
   const configuredProject = findProjectForRecord(record, projectsConfig);
 
-  if (configuredProject && configuredProject.path) {
-    const configuredRoot = expandEnvPath(configuredProject.path);
+  if (configuredProject && projectRootSource(configuredProject)) {
+    const configuredRoot = normalizeProjectRoot(projectRootSource(configuredProject));
+    const configuredDisplayRoot = preserveProjectDisplayRoot(projectDisplayRootSource(configuredProject));
     const marker = findBestMarker(configuredRoot);
     return buildProject({
       root: configuredRoot,
+      displayRoot: configuredDisplayRoot,
       workingDirectory: configuredRoot,
       name: configuredProject.name || marker.name || markerName(configuredRoot),
       source: "config-project",
@@ -222,9 +233,11 @@ function nearestDevRoot(value, devRoots) {
 }
 
 function buildProject(input) {
+  const root = normalizeProjectRoot(input.root) || input.root || null;
   return {
-    name: input.name || markerName(input.root),
-    root: redactPath(input.root),
+    name: input.name || markerName(root),
+    root,
+    displayRoot: preserveProjectDisplayRoot(input.displayRoot || input.root) || root,
     confidence: input.confidence,
     source: input.source,
     evidence: input.evidence || [],
