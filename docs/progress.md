@@ -1,5 +1,23 @@
 # Progress Log
 
+## 2026-08-02 - Installable Windows package slice
+
+Scope completed:
+- Added runtime path separation so installed program files stay immutable while configuration, history, audits, and tray logs use the user data directory.
+- Added exact Watchdog self-identity classification using the running backend PID, host, and port; the backend is hidden from the normal listener inventory and cannot become an action target.
+- Updated the tray companion to prefer a bundled Node runtime and pass the installed app/data roots to the backend.
+- Added `packaging/windows/build-release.ps1` for runtime-only staging, pinned local Node runtime bundling, release metadata, and SHA-256 manifests.
+- Added the per-user Inno Setup definition and `Test-StagedRelease.ps1` acceptance smoke test. The portable ZIP path was built and tested with Node `v24.16.0`; the Inno compiler is not installed on this development machine, so an installer executable has not been compiled here.
+
+Verification:
+- `npm test` passes: 251/251.
+- `npm run lint` passes.
+- Windows PowerShell parser accepts the tray, release-build, and staged-release smoke scripts.
+- Staged package smoke test passed on port 4546: bundled runtime launched, `hiddenWatchdog: 1`, history stayed outside the app directory, and host-only shutdown closed the staged backend.
+
+Remaining install release gate:
+- Compile the Inno Setup installer on a packaging machine, then perform clean Windows x64 install/upgrade/uninstall acceptance without Node.js, Git, Rust, Tauri, or a repository checkout.
+
 ## 2026-07-31 - Phase 8 PowerShell/.NET tray companion
 
 Scope completed:

@@ -3,6 +3,7 @@
 [CmdletBinding()]
 param(
   [string]$RepositoryRoot,
+  [string]$DataRoot,
   [string]$NodePath,
   [string]$HostName = "127.0.0.1",
   [int]$Port = 4545,
@@ -20,6 +21,16 @@ if ([string]::IsNullOrWhiteSpace($RepositoryRoot)) {
 } else {
   $RepositoryRoot = (Resolve-Path -LiteralPath $RepositoryRoot).Path
 }
+
+if ([string]::IsNullOrWhiteSpace($DataRoot)) {
+  if (-not [string]::IsNullOrWhiteSpace($env:LOCALHOST_WATCHDOG_DATA_DIR)) {
+    $DataRoot = $env:LOCALHOST_WATCHDOG_DATA_DIR
+  } else {
+    $DataRoot = Join-Path $RepositoryRoot ".localhost-watchdog"
+  }
+}
+$DataRoot = [System.IO.Path]::GetFullPath($DataRoot)
+New-Item -ItemType Directory -Path $DataRoot -Force | Out-Null
 
 if ([Threading.Thread]::CurrentThread.ApartmentState -ne [Threading.ApartmentState]::STA) {
   throw "The tray companion must run in an STA PowerShell session. Use powershell.exe or pwsh -STA."
@@ -91,6 +102,16 @@ function Resolve-NodeExecutable {
     return (Resolve-Path -LiteralPath $NodePath).Path
   }
 
+  $bundledCandidates = @(
+    (Join-Path $RepositoryRoot "runtime\node\node.exe"),
+    (Join-Path $RepositoryRoot "runtime\node.exe")
+  )
+  foreach ($candidate in $bundledCandidates) {
+    if (Test-Path -LiteralPath $candidate -PathType Leaf) {
+      return (Resolve-Path -LiteralPath $candidate).Path
+    }
+  }
+
   $command = Get-Command node.exe -ErrorAction SilentlyContinue
   if (-not $command) {
     $command = Get-Command node -ErrorAction SilentlyContinue
@@ -107,12 +128,12 @@ function Start-WatchdogBackend {
   }
 
   $nodeExecutable = Resolve-NodeExecutable
-  $logRoot = Join-Path $RepositoryRoot ".localhost-watchdog\tray"
+  $logRoot = Join-Path $DataRoot "tray"
   New-Item -ItemType Directory -Path $logRoot -Force | Out-Null
 
   $stdoutLog = Join-Path $logRoot "server.stdout.log"
   $stderrLog = Join-Path $logRoot "server.stderr.log"
-  $environmentNames = @("HOST", "PORT", "WATCHDOG_HOST_TOKEN")
+  $environmentNames = @("HOST", "PORT", "WATCHDOG_HOST_TOKEN", "LOCALHOST_WATCHDOG_APP_ROOT", "LOCALHOST_WATCHDOG_DATA_DIR")
   $previousEnvironment = @{}
   foreach ($name in $environmentNames) {
     $previousEnvironment[$name] = [Environment]::GetEnvironmentVariable($name, "Process")
@@ -122,6 +143,8 @@ function Start-WatchdogBackend {
     $env:HOST = $HostName
     $env:PORT = [string]$Port
     $env:WATCHDOG_HOST_TOKEN = $script:hostControlToken
+    $env:LOCALHOST_WATCHDOG_APP_ROOT = $RepositoryRoot
+    $env:LOCALHOST_WATCHDOG_DATA_DIR = $DataRoot
     $process = Start-Process -FilePath $nodeExecutable -ArgumentList @("watchdog.js", "serve") -WorkingDirectory $RepositoryRoot -WindowStyle Hidden -PassThru -RedirectStandardOutput $stdoutLog -RedirectStandardError $stderrLog
   } finally {
     foreach ($name in $environmentNames) {

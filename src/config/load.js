@@ -3,25 +3,32 @@
 const { existsSync, readFileSync, statSync } = require("node:fs");
 const path = require("node:path");
 const { dirname, join, resolve } = path;
+const { resolveRuntimePaths } = require("../runtime/paths");
 
 const REPO_ROOT = resolve(__dirname, "..", "..");
 
 function loadWatchdogConfig(options = {}) {
-  const root = options.root || REPO_ROOT;
+  const runtime = resolveRuntimePaths({
+    root: options.root,
+    appRoot: options.appRoot,
+    dataRoot: options.dataRoot
+  });
+  const root = runtime.appRoot;
+  const dataRoot = runtime.dataRoot;
   const safety = readJsonWithFallback(
-    join(root, "config", "safety.json"),
+    join(dataRoot, "config", "safety.json"),
     join(root, "config", "safety.example.json")
   );
   const projects = readJsonWithFallback(
-    join(root, "config", "projects.json"),
+    join(dataRoot, "config", "projects.json"),
     join(root, "config", "projects.example.json")
   );
   const devRoots = readJsonWithFallback(
-    join(root, "config", "dev-roots.json"),
+    join(dataRoot, "config", "dev-roots.json"),
     join(root, "config", "dev-roots.example.json")
   );
 
-  return normalizeConfig({ safety, projects, devRoots }, { root });
+  return normalizeConfig({ safety, projects, devRoots }, { root, dataRoot });
 }
 
 function readJsonWithFallback(primaryPath, fallbackPath) {
@@ -37,6 +44,7 @@ function readJsonWithFallback(primaryPath, fallbackPath) {
 
 function normalizeConfig(config, options = {}) {
   const root = options.root || REPO_ROOT;
+  const dataRoot = options.dataRoot || root;
   const normalizedProjects = (config.projects.projects || []).map(normalizeConfiguredProject);
   const projectRoots = normalizedProjects.map((project) => project.root).filter(Boolean);
   const configuredDevRoots = (config.devRoots && config.devRoots.devRoots) || [];
@@ -64,7 +72,7 @@ function normalizeConfig(config, options = {}) {
       httpProbeMaxRedirects: normalizePositiveInteger(config.safety.httpProbeMaxRedirects, 2),
       processTree: normalizeProcessTreeConfig(config.safety.processTree || {}),
       lifecycle: normalizeLifecycleConfig(config.safety.lifecycle || {}),
-      history: normalizeHistoryConfig(config.safety.history || {}, root)
+      history: normalizeHistoryConfig(config.safety.history || {}, dataRoot, root)
     },
     projects: {
       ...config.projects,
@@ -111,10 +119,15 @@ function normalizeProcessTreeConfig(value) {
   };
 }
 
-function normalizeHistoryConfig(value, root) {
+function normalizeHistoryConfig(value, dataRoot, appRoot) {
+  const configuredPath = value.storagePath || ".localhost-watchdog/history.json";
+  const legacyDefault = configuredPath.replace(/\\/g, "/") === ".localhost-watchdog/history.json";
+  const storagePath = legacyDefault && dataRoot !== appRoot
+    ? join(dataRoot, "history.json")
+    : resolve(dataRoot, configuredPath);
   return {
     enabled: value.enabled !== false,
-    storagePath: resolve(root, value.storagePath || ".localhost-watchdog/history.json"),
+    storagePath,
     maxSnapshots: normalizePositiveInteger(value.maxSnapshots, 25),
     maxHistoryAgeMs: normalizePositiveInteger(value.maxHistoryAgeMs, 14 * 24 * 60 * 60 * 1000),
     maxProcessRecords: normalizePositiveInteger(value.maxProcessRecords, 500)

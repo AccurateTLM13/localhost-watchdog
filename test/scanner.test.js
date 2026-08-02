@@ -86,6 +86,24 @@ test("normalizes records, redacts command lines, and hides protected processes",
   assert.equal(nodeRecord.evidence.length > 0, true);
 });
 
+test("hides the running Watchdog backend by exact process, host, and port identity", () => {
+  const normalized = normalizeConnections(
+    [connection(4545, 9100)],
+    processMap(9100, { commandLine: "node watchdog.js serve" }),
+    {
+      now: new Date("2026-06-17T18:00:00.000Z"),
+      watchdog: {
+        CurrentProcessId: 9100,
+        CurrentHost: "127.0.0.1",
+        CurrentPort: 4545
+      }
+    }
+  );
+
+  assert.equal(normalized.visible.length, 0);
+  assert.equal(normalized.hidden.watchdog, 1);
+});
+
 test("process identity uses PID plus creation time and survives PID reuse", () => {
   const first = normalizeConnections([connection(3000, 9000)], processMap(9000, {
     creationTime: new Date("2026-06-17T10:00:00.000Z")

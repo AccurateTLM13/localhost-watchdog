@@ -14,46 +14,70 @@ const { buildDiagnosticsExport } = require("./diagnostics/export");
 const { safeError, safeInternalLogMessage } = require("./privacy/errors");
 const { scanWindows } = require("./scanner/windows");
 const { createSessionManager } = require("./security/session");
+const { resolveRuntimePaths } = require("./runtime/paths");
 
 const DEFAULT_PORT = Number(process.env.PORT || 4545);
 const HOST = process.env.HOST || "127.0.0.1";
 const UI_ROOT = join(__dirname, "ui");
 
 function createServer(options = {}) {
+  const runtime = resolveRuntimePaths({
+    root: options.appRoot,
+    dataRoot: options.dataRoot
+  });
+  const currentHost = options.host || process.env.HOST || "127.0.0.1";
+  const currentPort = Number(options.port || process.env.PORT || 4545);
+  const defaultScanProvider = options.scanProvider || (() => scanWindows({
+    currentHost,
+    currentPort
+  }));
   const dryRunManager = options.dryRunManager || createDryRunManager();
   const sessionManager = options.sessionManager || createSessionManager();
   const confirmationManager = options.confirmationManager || createConfirmationManager({
     dryRunManager,
-    scanProvider: options.confirmationScanProvider,
+    scanProvider: options.confirmationScanProvider || defaultScanProvider,
     auditWriter: options.confirmationAuditWriter,
     watchdogPrivilege: options.watchdogPrivilege
   });
   const executionManager = options.executionManager || createExecutionManager({
     confirmationManager,
-    scanProvider: options.executionScanProvider,
-    postActionScanProvider: options.executionPostActionScanProvider,
+    scanProvider: options.executionScanProvider || defaultScanProvider,
+    postActionScanProvider: options.executionPostActionScanProvider || defaultScanProvider,
     auditWriter: options.executionAuditWriter,
     gracefulStop: options.gracefulStop,
     watchdogPrivilege: options.watchdogPrivilege
   });
   const startManager = options.startManager || createStartManager({
     registry: options.projectRegistry,
-    scanProvider: options.projectScanProvider,
+    registryOptions: {
+      configOptions: {
+        root: runtime.appRoot,
+        dataRoot: runtime.dataRoot
+      }
+    },
+    scanProvider: options.projectScanProvider || (() => scanWindows({ currentHost, currentPort, skipHistory: true })),
     launcher: options.projectLauncher
   });
   const restartManager = options.restartManager || createRestartManager({
     registry: options.projectRegistry,
-    scanProvider: options.restartScanProvider || options.projectScanProvider,
+    registryOptions: {
+      configOptions: {
+        root: runtime.appRoot,
+        dataRoot: runtime.dataRoot
+      }
+    },
+    scanProvider: options.restartScanProvider || options.projectScanProvider || (() => scanWindows({ currentHost, currentPort, skipHistory: true })),
     postStopScanProvider: options.restartPostStopScanProvider,
     postStartScanProvider: options.restartPostStartScanProvider,
     gracefulStop: options.gracefulStop,
-    launcher: options.projectLauncher
+    launcher: options.projectLauncher,
+    historyPath: options.restartHistoryPath || runtime.restartHistoryPath
   });
   const adoptionManager = options.adoptionManager || createAdoptionManager({
     registry: options.projectRegistry,
-    configProvider: options.projectConfigProvider,
-    configOptions: options.projectConfigOptions,
-    projectsPath: options.projectConfigPath,
+    configProvider: options.projectConfigProvider || (() => require("./config/load").loadWatchdogConfig({ root: runtime.appRoot, dataRoot: runtime.dataRoot })),
+    configOptions: options.projectConfigOptions || { root: runtime.appRoot, dataRoot: runtime.dataRoot },
+    projectsPath: options.projectConfigPath || join(runtime.configRoot, "projects.json"),
     configWriter: options.projectConfigWriter
   });
   const hostControlToken = options.hostControlToken || process.env.WATCHDOG_HOST_TOKEN || null;
@@ -111,7 +135,7 @@ function createServer(options = {}) {
       }
 
       if (request.method === "GET" && pathname === "/api/servers") {
-        return sendJson(response, 200, await scanWindows());
+        return sendJson(response, 200, await defaultScanProvider());
       }
 
       if (request.method === "GET" && pathname === "/api/diagnostics") {
@@ -408,7 +432,7 @@ function hostNameFromHeader(value) {
 }
 
 function startServer(port = DEFAULT_PORT, host = HOST) {
-  const server = createServer();
+  const server = createServer({ port, host });
   return new Promise((resolve) => {
     server.listen(port, host, () => {
       const address = `http://${host}:${port}`;

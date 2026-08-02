@@ -2,8 +2,9 @@
 
 const { appendFileSync, mkdirSync } = require("node:fs");
 const { dirname, join } = require("node:path");
+const { resolveRuntimePaths } = require("../runtime/paths");
 
-const DEFAULT_HISTORY_PATH = join(process.cwd(), ".localhost-watchdog", "restart-history.jsonl");
+const DEFAULT_HISTORY_PATH = resolveRuntimePaths().restartHistoryPath;
 
 function createRestartHistory(options = {}) {
   const limit = Number.isInteger(options.limit) && options.limit > 0 ? options.limit : 100;
@@ -37,7 +38,7 @@ function createRestartHistory(options = {}) {
 }
 
 function writeRestartHistory(entry, options = {}) {
-  const filePath = options.filePath || DEFAULT_HISTORY_PATH;
+  const filePath = options.filePath || resolveRuntimePaths().restartHistoryPath;
   mkdirSync(dirname(filePath), { recursive: true });
   appendFileSync(filePath, `${JSON.stringify(entry)}\n`, { encoding: "utf8" });
 }

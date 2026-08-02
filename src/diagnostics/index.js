@@ -7,15 +7,17 @@ const { redactSensitiveText } = require("../privacy/redact");
 const { DEFAULT_MAX_DEPTH } = require("../process/tree");
 const { MAX_BODY_BYTES } = require("../scanner/probe");
 const { getLastScanDiagnostics, resolveWindowsCommand } = require("../scanner/windows");
+const { resolveRuntimePaths } = require("../runtime/paths");
 
 const REPO_ROOT = path.resolve(__dirname, "..", "..");
 
 function buildDiagnostics(options = {}) {
-  const root = options.root || REPO_ROOT;
+  const runtime = resolveRuntimePaths({ root: options.root, dataRoot: options.dataRoot });
+  const root = runtime.appRoot;
   const io = options.io || fs;
   const now = options.now || new Date();
-  const sourceReport = readConfigSources(root, io);
-  const configResult = loadEffectiveConfig(root);
+  const sourceReport = readConfigSources(root, io, runtime.dataRoot);
+  const configResult = loadEffectiveConfig(root, runtime.dataRoot);
   const config = configResult.config;
   const lastScan = options.lastScanDiagnostics !== undefined ? options.lastScanDiagnostics : getLastScanDiagnostics();
   const historyStorage = inspectHistoryStorage(config.safety.history.storagePath, io);
@@ -35,11 +37,11 @@ function buildDiagnostics(options = {}) {
   };
 }
 
-function readConfigSources(root, io) {
+function readConfigSources(root, io, dataRoot = root) {
   return {
-    safety: readSource(path.join(root, "config", "safety.json"), path.join(root, "config", "safety.example.json"), io),
-    projects: readSource(path.join(root, "config", "projects.json"), path.join(root, "config", "projects.example.json"), io),
-    devRoots: readSource(path.join(root, "config", "dev-roots.json"), path.join(root, "config", "dev-roots.example.json"), io)
+    safety: readSource(path.join(dataRoot, "config", "safety.json"), path.join(root, "config", "safety.example.json"), io),
+    projects: readSource(path.join(dataRoot, "config", "projects.json"), path.join(root, "config", "projects.example.json"), io),
+    devRoots: readSource(path.join(dataRoot, "config", "dev-roots.json"), path.join(root, "config", "dev-roots.example.json"), io)
   };
 }
 
@@ -66,28 +68,28 @@ function readSource(primaryPath, fallbackPath, io) {
   }
 }
 
-function loadEffectiveConfig(root) {
+function loadEffectiveConfig(root, dataRoot = root) {
   try {
     return {
       status: "healthy",
-      config: loadWatchdogConfig({ root }),
+      config: loadWatchdogConfig({ root, dataRoot }),
       error: null
     };
   } catch (error) {
     return {
       status: "degraded",
-      config: loadBundledDefaultConfig(),
+      config: loadBundledDefaultConfig(root, dataRoot),
       error: "effective config fell back to bundled defaults because local config could not be loaded"
     };
   }
 }
 
-function loadBundledDefaultConfig() {
+function loadBundledDefaultConfig(root = REPO_ROOT, dataRoot = root) {
   return normalizeConfig({
-    safety: JSON.parse(fs.readFileSync(path.join(REPO_ROOT, "config", "safety.example.json"), "utf8")),
-    projects: JSON.parse(fs.readFileSync(path.join(REPO_ROOT, "config", "projects.example.json"), "utf8")),
-    devRoots: JSON.parse(fs.readFileSync(path.join(REPO_ROOT, "config", "dev-roots.example.json"), "utf8"))
-  }, { root: REPO_ROOT });
+    safety: JSON.parse(fs.readFileSync(path.join(root, "config", "safety.example.json"), "utf8")),
+    projects: JSON.parse(fs.readFileSync(path.join(root, "config", "projects.example.json"), "utf8")),
+    devRoots: JSON.parse(fs.readFileSync(path.join(root, "config", "dev-roots.example.json"), "utf8"))
+  }, { root, dataRoot });
 }
 
 function buildConfigurationDiagnostics(sources, config, root, io) {

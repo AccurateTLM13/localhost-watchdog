@@ -391,7 +391,10 @@ async function scanWindows(options = {}) {
     CurrentElevated: false,
     CurrentSessionId: null,
     CurrentIntegrityLevel: null,
-    CurrentIntegrityAvailable: false
+    CurrentIntegrityAvailable: false,
+    CurrentProcessId: process.pid,
+    CurrentHost: options.currentHost || process.env.HOST || "127.0.0.1",
+    CurrentPort: Number(options.currentPort || process.env.PORT || 4545)
   };
 
   try {
@@ -409,7 +412,10 @@ async function scanWindows(options = {}) {
         CurrentElevated: parsed.CurrentElevated === true,
         CurrentSessionId: parsed.CurrentSessionId != null ? Number(parsed.CurrentSessionId) : null,
         CurrentIntegrityLevel: parsed.CurrentIntegrityLevel != null ? Number(parsed.CurrentIntegrityLevel) : null,
-        CurrentIntegrityAvailable: parsed.CurrentIntegrityAvailable === true
+        CurrentIntegrityAvailable: parsed.CurrentIntegrityAvailable === true,
+        CurrentProcessId: process.pid,
+        CurrentHost: options.currentHost || process.env.HOST || "127.0.0.1",
+        CurrentPort: Number(options.currentPort || process.env.PORT || 4545)
       };
       processes = parseWindowsProcesses(JSON.stringify(parsed.Processes || []));
     } else {
