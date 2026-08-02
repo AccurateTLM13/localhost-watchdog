@@ -6,6 +6,9 @@ const { extname, join } = require("node:path");
 const { createConfirmationManager } = require("./actions/confirmation");
 const { createDryRunManager } = require("./actions/dry-run");
 const { createExecutionManager } = require("./actions/execution");
+const { createStartManager } = require("./actions/start");
+const { createRestartManager } = require("./actions/restart");
+const { createAdoptionManager } = require("./project/adoption");
 const { buildDiagnostics } = require("./diagnostics");
 const { buildDiagnosticsExport } = require("./diagnostics/export");
 const { safeError, safeInternalLogMessage } = require("./privacy/errors");
@@ -28,11 +31,35 @@ function createServer(options = {}) {
   const executionManager = options.executionManager || createExecutionManager({
     confirmationManager,
     scanProvider: options.executionScanProvider,
+    postActionScanProvider: options.executionPostActionScanProvider,
     auditWriter: options.executionAuditWriter,
+    gracefulStop: options.gracefulStop,
     watchdogPrivilege: options.watchdogPrivilege
   });
+  const startManager = options.startManager || createStartManager({
+    registry: options.projectRegistry,
+    scanProvider: options.projectScanProvider,
+    launcher: options.projectLauncher
+  });
+  const restartManager = options.restartManager || createRestartManager({
+    registry: options.projectRegistry,
+    scanProvider: options.restartScanProvider || options.projectScanProvider,
+    postStopScanProvider: options.restartPostStopScanProvider,
+    postStartScanProvider: options.restartPostStartScanProvider,
+    gracefulStop: options.gracefulStop,
+    launcher: options.projectLauncher
+  });
+  const adoptionManager = options.adoptionManager || createAdoptionManager({
+    registry: options.projectRegistry,
+    configProvider: options.projectConfigProvider,
+    configOptions: options.projectConfigOptions,
+    projectsPath: options.projectConfigPath,
+    configWriter: options.projectConfigWriter
+  });
+  const hostControlToken = options.hostControlToken || process.env.WATCHDOG_HOST_TOKEN || null;
+  let server;
 
-  return http.createServer(async (request, response) => {
+  server = http.createServer(async (request, response) => {
     try {
       const url = new URL(request.url, "http://127.0.0.1");
       const pathname = url.pathname;
@@ -50,6 +77,29 @@ function createServer(options = {}) {
           ok: true,
           destructiveActionsAvailable: false
         });
+      }
+
+      if (request.method === "POST" && pathname === "/api/host/shutdown") {
+        const suppliedToken = String(request.headers["x-watchdog-host-token"] || "");
+        if (!hostControlToken || suppliedToken !== hostControlToken) {
+          return sendJson(response, 403, {
+            ok: false,
+            code: "HOST_CONTROL_UNAUTHORIZED",
+            message: "The Watchdog host-control token was not accepted.",
+            actionExecuted: false,
+            serversTerminated: false
+          });
+        }
+        sendJson(response, 200, {
+          ok: true,
+          state: "watchdog-shutdown-requested",
+          actionExecuted: false,
+          serversTerminated: false
+        });
+        setTimeout(() => {
+          if (server && server.listening) server.close(() => {});
+        }, 0);
+        return;
       }
 
       if (pathname === "/api/session" && request.method !== "POST") {
@@ -73,6 +123,62 @@ function createServer(options = {}) {
           diagnostics: buildDiagnostics(),
           format: url.searchParams.get("format") || "markdown"
         });
+        return sendJson(response, result.ok ? 200 : 422, result);
+      }
+
+      if (request.method === "GET" && pathname === "/api/projects") {
+        return sendJson(response, 200, await startManager.listProjects());
+      }
+
+      if (pathname === "/api/projects/start" && request.method !== "POST") {
+        return sendJson(response, 405, safeApiError("METHOD_NOT_ALLOWED", "Only POST is supported for project start requests."));
+      }
+
+      if (request.method === "POST" && pathname === "/api/projects/start") {
+        const body = await readProtectedJson(request, response);
+        if (!body.ok) return;
+        const session = sessionManager.validateRequest(request, body.body);
+        if (!session.ok) return sendJson(response, 403, sessionError(session));
+        const result = await startManager.startProject(body.body, { session });
+        return sendJson(response, result.ok ? 200 : 422, result);
+      }
+
+      if (pathname === "/api/projects/restart" && request.method !== "POST") {
+        return sendJson(response, 405, safeApiError("METHOD_NOT_ALLOWED", "Only POST is supported for project restart requests."));
+      }
+
+      if (request.method === "POST" && pathname === "/api/projects/restart") {
+        const body = await readProtectedJson(request, response);
+        if (!body.ok) return;
+        const session = sessionManager.validateRequest(request, body.body);
+        if (!session.ok) return sendJson(response, 403, sessionError(session));
+        const result = await restartManager.restartProject(body.body, { session });
+        return sendJson(response, result.ok ? 200 : 422, result);
+      }
+
+      if (pathname === "/api/projects/adopt/draft" && request.method !== "POST") {
+        return sendJson(response, 405, safeApiError("METHOD_NOT_ALLOWED", "Only POST is supported for project adoption draft requests."));
+      }
+
+      if (request.method === "POST" && pathname === "/api/projects/adopt/draft") {
+        const body = await readProtectedJson(request, response);
+        if (!body.ok) return;
+        const session = sessionManager.validateRequest(request, body.body);
+        if (!session.ok) return sendJson(response, 403, sessionError(session));
+        const result = adoptionManager.draftAdoption(body.body);
+        return sendJson(response, result.ok ? 200 : 422, result);
+      }
+
+      if (pathname === "/api/projects/adopt" && request.method !== "POST") {
+        return sendJson(response, 405, safeApiError("METHOD_NOT_ALLOWED", "Only POST is supported for project adoption requests."));
+      }
+
+      if (request.method === "POST" && pathname === "/api/projects/adopt") {
+        const body = await readProtectedJson(request, response);
+        if (!body.ok) return;
+        const session = sessionManager.validateRequest(request, body.body);
+        if (!session.ok) return sendJson(response, 403, sessionError(session));
+        const result = await adoptionManager.adoptProject(body.body, { session });
         return sendJson(response, result.ok ? 200 : 422, result);
       }
 
@@ -165,6 +271,23 @@ function createServer(options = {}) {
         return sendJson(response, result.ok ? 200 : 422, result);
       }
 
+      if (pathname === "/api/actions/stop/execute" && request.method !== "POST") {
+        return sendJson(response, 405, safeApiError("METHOD_NOT_ALLOWED", "Only POST is supported for execution requests."));
+      }
+
+      if (request.method === "POST" && pathname === "/api/actions/stop/execute") {
+        const body = await readProtectedJson(request, response);
+        if (!body.ok) return;
+        const session = sessionManager.validateRequest(request, body.body);
+        if (!session.ok) return sendJson(response, 403, sessionError(session));
+        const result = await executionManager.executeStop({
+          ...body.body,
+          executionAccessToken: request.headers["x-execution-access-token"] || body.body.executionAccessToken,
+          executionMode: "execute"
+        }, { session });
+        return sendJson(response, result.ok ? 200 : 422, result);
+      }
+
       if (request.method === "GET" && (pathname === "/" || pathname === "/index.html")) {
         return sendStatic(response, "index.html");
       }
@@ -191,6 +314,7 @@ function createServer(options = {}) {
       });
     }
   });
+  return server;
 }
 
 async function readProtectedJson(request, response) {

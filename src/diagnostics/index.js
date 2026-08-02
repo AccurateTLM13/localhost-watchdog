@@ -94,7 +94,10 @@ function buildConfigurationDiagnostics(sources, config, root, io) {
   const configuredDevRoots = [
     ...((sources.safety.data && sources.safety.data.devRoots) || []).map((value) => ({ value, source: sources.safety.sourceFile })),
     ...((sources.devRoots.data && sources.devRoots.data.devRoots) || []).map((value) => ({ value, source: sources.devRoots.sourceFile })),
-    ...((sources.projects.data && sources.projects.data.projects || []).filter((project) => project.path).map((project) => ({ value: project.path, source: sources.projects.sourceFile })))
+    ...((sources.projects.data && sources.projects.data.projects || []).map((project) => ({
+      value: project.displayRoot || project.root || project.path,
+      source: sources.projects.sourceFile
+    })).filter((project) => project.value))
   ];
   const devRoots = configuredDevRoots.map((entry) => inspectDevRoot(entry.value, entry.source, io));
 
@@ -179,7 +182,7 @@ function inspectDevRoot(value, sourceFile, io) {
   if (!value) {
     return { ...base, reasonIgnored: "empty value" };
   }
-  if (!isAbsoluteWindowsPath(expanded)) {
+  if (!isSupportedAbsolutePath(expanded)) {
     return { ...base, reasonIgnored: "not an absolute Windows path" };
   }
   try {
@@ -396,6 +399,10 @@ function safeDisplayPath(value) {
 
 function isAbsoluteWindowsPath(value) {
   return /^[a-z]:\\/i.test(String(value || "")) || /^\\\\[^\\]+\\[^\\]+/.test(String(value || ""));
+}
+
+function isSupportedAbsolutePath(value) {
+  return isAbsoluteWindowsPath(value) || path.isAbsolute(String(value || ""));
 }
 
 module.exports = {

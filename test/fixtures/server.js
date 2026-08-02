@@ -7,13 +7,14 @@ const token = process.argv[2];
 if (!token) {
   process.exit(0);
 }
+const requestedPort = Number(process.argv[3]) || 0;
 
 const server = http.createServer((req, res) => {
   res.writeHead(200);
   res.end(`Fixture running with token: ${token}\n`);
 });
 
-server.listen(0, "127.0.0.1", () => {
+server.listen(requestedPort, "127.0.0.1", () => {
   const port = server.address().port;
   console.log(`LISTENING:${port}`);
 });

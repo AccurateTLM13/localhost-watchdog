@@ -12,7 +12,11 @@ const state = {
   confirmationAccess: {},
   session: null,
   filter: "all",
-  sort: "port"
+  sort: "port",
+  search: "",
+  watch: false,
+  watchTimer: null,
+  loading: false
 };
 
 const els = {
@@ -21,8 +25,10 @@ const els = {
   devRoots: document.getElementById("dev-roots"),
   servers: document.getElementById("servers"),
   refresh: document.getElementById("refresh"),
+  watchToggle: document.getElementById("watch-toggle"),
   status: document.getElementById("scan-status"),
   filters: document.getElementById("filters"),
+  search: document.getElementById("server-search"),
   sort: document.getElementById("sort"),
   exportFormat: document.getElementById("export-format"),
   exportGenerate: document.getElementById("export-generate"),
@@ -49,7 +55,12 @@ const exportController = exportUi.createExportController({
 });
 
 els.refresh.addEventListener("click", refresh);
+els.watchToggle.addEventListener("click", () => setWatchMode(!state.watch));
 exportController.bind();
+els.search.addEventListener("input", () => {
+  state.search = els.search.value;
+  render();
+});
 els.sort.addEventListener("change", () => {
   state.sort = els.sort.value;
   render();
@@ -70,6 +81,8 @@ els.servers.addEventListener("click", handleServerClick);
 refresh();
 
 async function refresh() {
+  if (state.loading) return;
+  state.loading = true;
   setStatus("Scanning...");
   els.servers.innerHTML = renderers.renderLoadingState();
   els.refresh.disabled = true;
@@ -83,12 +96,13 @@ async function refresh() {
     state.confirmationAccess = {};
     state.session = await fetchSession();
     state.diagnostics = await fetchDiagnostics();
-    setStatus(`Updated ${new Date().toLocaleTimeString()}`);
+    setStatus(`Updated ${new Date().toLocaleTimeString()}${state.watch ? " · watching" : ""}`);
     render();
   } catch (error) {
     setStatus("Scan failed");
     els.servers.innerHTML = renderers.renderErrorState(error.message);
   } finally {
+    state.loading = false;
     els.refresh.disabled = false;
   }
 }
@@ -96,6 +110,7 @@ async function refresh() {
 function render() {
   if (!state.snapshot) return;
   renderSummary(state.snapshot);
+  renderFilterCounts(state.snapshot.servers || []);
   renderDiagnostics(state.diagnostics);
   renderDevRoots(state.snapshot);
   renderServers(state.snapshot.servers || []);
@@ -120,9 +135,38 @@ function renderServers(servers) {
   els.servers.innerHTML = renderers.renderServerList(servers, {
     filter: state.filter,
     sort: state.sort,
+    search: state.search,
     dryRuns: state.dryRuns,
     confirmations: state.confirmations
   });
+}
+
+function renderFilterCounts(servers) {
+  for (const count of els.filters.querySelectorAll("[data-filter-count]")) {
+    const filter = count.dataset.filterCount;
+    const total = filter === "all" ? servers.length : servers.filter((record) => format.matchesFilter(record, filter)).length;
+    count.textContent = String(total);
+    const button = count.closest("button");
+    const label = button && button.querySelector(".filter-label");
+    if (button && label) button.setAttribute("aria-label", `${label.textContent} (${total})`);
+  }
+}
+
+function setWatchMode(enabled) {
+  state.watch = enabled;
+  if (state.watchTimer) {
+    clearInterval(state.watchTimer);
+    state.watchTimer = null;
+  }
+  els.watchToggle.setAttribute("aria-pressed", String(enabled));
+  els.watchToggle.textContent = enabled ? "Watch on" : "Watch off";
+  els.watchToggle.setAttribute("aria-label", enabled ? "Turn off automatic rescans" : "Turn on automatic rescans");
+  if (enabled) {
+    state.watchTimer = setInterval(refresh, 30000);
+    setStatus(state.snapshot ? "Watching · refreshes every 30s" : "Watch enabled");
+  } else if (state.snapshot) {
+    setStatus(`Updated ${new Date().toLocaleTimeString()}`);
+  }
 }
 
 function setStatus(value) {

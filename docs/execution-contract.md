@@ -1,8 +1,8 @@
 # Execution Contract
 
 > [!IMPORTANT]
-> **Status: Future Design Specification**
-> This document defines the architectural and safety requirements for any future process-stop execution phase in Localhost Watchdog. The current implementation remains completely non-destructive: it performs only read-only dry-run safety checks, confirmation intent recording, and execution simulations. No process signaling, killing, or termination capability is present in the source code.
+> **Status: Phase 4 implementation contract**
+> The proof, confirmation, audit, final-revalidation, and post-action verification requirements in this document are implemented. The Windows backend now supports a supervised graceful signal for explicitly grouped development runtimes and `CloseMainWindow` for GUI targets. It fails closed when that boundary is unavailable and never auto-escalates to a hard stop.
 
 ---
 
@@ -107,3 +107,16 @@ All error states must prevent exposure of sensitive system details.
   - `EXECUTION_TIMEOUT`: The process did not exit within the timeout window.
   - `REVALIDATION_UNAVAILABLE`: The scanner could not query the process/port table.
 - **Redaction of Raw Exceptions**: Under no circumstances should raw OS exception messages, folder paths, command fragments, or stack traces be returned in API responses or written to audit logs.
+
+## 8. Managed Launch Contract
+
+Phase 5 managed starts use `localhost-watchdog.managed-launch.v1`. A successful launch must provide:
+
+- an existing absolute working directory;
+- a direct executable supported by the graceful-stop runtime allowlist;
+- `CREATE_NEW_PROCESS_GROUP` as the launch mechanism;
+- a process-group ID equal to the launched PID;
+- a valid process creation timestamp and derived `processInstanceId`;
+- the selected port when a port was chosen for the launch.
+
+The start manager rejects an injected or native launcher result that does not satisfy this contract. Shell-wrapper commands such as `npm.cmd` are rejected until wrapper and listener ownership can be reconciled without weakening the Phase 4 single-target safety checks. This gives Phase 6 a stable identity handoff: stop can revalidate the managed process instance and its listener, then start can return a new complete identity for the replacement instance.

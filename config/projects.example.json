@@ -1,4 +1,21 @@
 {
   "version": 1,
-  "projects": []
+  "projects": [
+    {
+      "id": "example-web",
+      "name": "Example web app",
+      "root": "%USERPROFILE%\\projects\\example-web",
+      "displayRoot": "%USERPROFILE%\\projects\\example-web",
+      "start": {
+        "command": "node",
+        "args": ["server.js"],
+        "cwd": "%USERPROFILE%\\projects\\example-web",
+        "portStrategy": "strict"
+      },
+      "preferredPort": 5173,
+      "portStrategy": "strict",
+      "runtime": "node",
+      "tags": ["example"]
+    }
+  ]
 }

@@ -49,7 +49,12 @@ test("summarizes dashboard counts", () => {
     hidden: 2,
     reachable: 2,
     networkExposed: 1,
-    unknown: 1
+    unknown: 1,
+    attention: 2,
+    unmanaged: 2,
+    protected: 0,
+    readonly: 3,
+    hiddenBreakdown: {}
   });
 });
 

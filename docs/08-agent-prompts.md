@@ -221,20 +221,22 @@ Update docs/progress.md.
 Wrap Localhost Watchdog in a Windows tray app.
 
 Recommended approach:
-Use Tauri and reuse the existing dashboard UI/service layer.
+Use the PowerShell/.NET `System.Windows.Forms.NotifyIcon` companion and reuse the existing Node server and browser dashboard. Do not add Rust, Tauri, or an embedded webview for this phase.
 
 Requirements:
 - Add tray icon.
-- Add menu actions: Open Watchdog, Refresh, Stop All Safe Dev Servers, Quit.
-- Show live count of visible dev servers.
+- Add menu actions: Open Watchdog, Refresh, Quit.
+- Show the live visible-server count in the tray tooltip.
 - Add native notification for stale servers.
-- Closing the window should not kill servers.
-- Quitting Watchdog should not kill servers unless the user explicitly chooses a cleanup action.
+- Closing the browser dashboard should not affect servers.
+- Quitting should close only a Node backend started by this companion through the token-protected host-control route.
+- A pre-existing healthy backend must not be claimed or closed by the companion.
 
 Testing:
 - Manual Windows tray QA.
 - Verify scanner still works.
-- Verify stop/restart calls use the same safety engine.
+- Verify the fixture server remains reachable after tray quit.
+- Verify no force-stop or process-tree primitive is used by the companion.
 
 Do not add public tunnels or advanced integrations yet.
 ```

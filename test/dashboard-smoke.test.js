@@ -48,6 +48,20 @@ test("renders fake API normal, unreachable, network, unknown, local AI, database
   assert.match(html, /Protected\/system/);
 });
 
+test("dashboard presents displayRoot while retaining canonical root for identity", () => {
+  const record = {
+    ...snapshot.servers[0],
+    project: {
+      ...snapshot.servers[0].project,
+      root: "c:\\users\\johnp\\desktop\\Locaily",
+      displayRoot: "C:\\Users\\johnp\\Desktop\\Locaily"
+    }
+  };
+  const html = renderServerList([record], { filter: "all", sort: "port" });
+  assert.match(html, /C:\\Users\\johnp\\Desktop\\Locaily/);
+  assert.doesNotMatch(html, /<code>c:\\users\\johnp\\desktop\\Locaily<\/code>/);
+});
+
 test("renders empty visible list, loading state, and API error state", () => {
   assert.match(renderServerList([], { filter: "all" }), /No visible listeners match this filter/);
   assert.match(renderLoadingState(), /Scanning visible localhost listeners/);
@@ -89,6 +103,10 @@ test("filters cover all dashboard categories", () => {
     helpers: 2,
     unknown: 1,
     network: 1,
+    attention: 4,
+    unmanaged: 3,
+    "long-running": 1,
+    protected: 1,
     readonly: 8
   };
 
@@ -96,6 +114,19 @@ test("filters cover all dashboard categories", () => {
     const filtered = filterAndSortServers(snapshot.servers, { filter, sort: "port" });
     assert.equal(filtered.length, count, `filter ${filter}`);
   }
+});
+
+test("triage filters and search narrow the inventory without changing the read-only boundary", () => {
+  assert.equal(filterAndSortServers(snapshot.servers, { filter: "attention" }).length, 4);
+  assert.equal(filterAndSortServers(snapshot.servers, { filter: "unmanaged" }).length, 3);
+  assert.equal(filterAndSortServers(snapshot.servers, { filter: "long-running" }).length, 1);
+  assert.equal(filterAndSortServers(snapshot.servers, { filter: "protected" }).length, 1);
+  assert.equal(filterAndSortServers(snapshot.servers, { filter: "readonly" }).length, 8);
+  assert.deepEqual(filterAndSortServers(snapshot.servers, { search: "next-owned-app" }).map((record) => record.port), [3000]);
+  assert.deepEqual(filterAndSortServers(snapshot.servers, { search: "5432" }).map((record) => record.processName), ["postgres.exe"]);
+  const ollama = snapshot.servers.find((record) => record.category === "local-ai-server");
+  const relatedHtml = renderServerList([ollama, { ...ollama, port: 11435, listenerId: "ollama-related" }], { filter: "all" });
+  assert.match(relatedHtml, /Related app: Ollama · 2 listeners/);
 });
 
 test("sorting covers port, category, confidence, and process name", () => {

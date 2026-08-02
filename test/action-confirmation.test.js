@@ -45,10 +45,12 @@ test("confirmation records explicit intent only after valid session, CSRF, token
   });
 
   assert.equal(accepted.state, "confirmation-accepted");
-  assert.equal(accepted.message, "Confirmation recorded. No process action was executed.");
+  assert.equal(accepted.message, "Confirmation recorded. A short-lived execution proof was issued for this exact target.");
+  assert.match(accepted.executionAccessToken, /^exec-access-[a-f0-9]{64}$/);
+  assert.equal(accepted.executionProof.tokenType, "single-use");
   assert.equal(accepted.actionExecuted, false);
   assert.equal(accepted.executionAuthorized, false);
-  assert.equal(accepted.authorization.authorizesExecution, false);
+  assert.equal(accepted.authorization.authorizesExecution, true);
   assert.equal(auditRecords.length, 1);
   const auditText = JSON.stringify(auditRecords);
   assert.equal(auditText.includes(created.confirmationAccessToken), false);

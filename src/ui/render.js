@@ -10,13 +10,28 @@
 
   function renderSummary(snapshot) {
     const summary = format.summarize(snapshot);
+    const hiddenItems = Object.entries(summary.hiddenBreakdown || {})
+      .filter(([, value]) => Number(value) > 0)
+      .map(([key, value]) => `<span>${escapeHtml(hiddenLabel(key))} <strong>${escapeHtml(value)}</strong></span>`)
+      .join("");
+
     return [
-      summaryItem("Total scanned", summary.scanned),
-      summaryItem("Visible", summary.visible),
-      summaryItem("Hidden", summary.hidden),
+      `<div class="summary-context">
+        <div><span class="field-label">Current inventory</span><strong>${escapeHtml(summary.visible)} visible listeners</strong></div>
+        <span>Total scanned <strong>${escapeHtml(summary.scanned)}</strong></span>
+        <span>Unknown visible <strong>${escapeHtml(summary.unknown)}</strong></span>
+        <span>Read-only inventory. Use the attention and ownership filters to find what needs review.</span>
+      </div>`,
+      summaryItem("Visible now", summary.visible),
+      summaryItem("Needs attention", summary.attention, summary.attention > 0 ? "warn" : ""),
+      summaryItem("Unmanaged", summary.unmanaged, summary.unmanaged > 0 ? "warn" : ""),
       summaryItem("Reachable HTTP", summary.reachable),
       summaryItem("Network-exposed", summary.networkExposed, summary.networkExposed > 0 ? "warn" : ""),
-      summaryItem("Unknown", summary.unknown, summary.unknown > 0 ? "muted" : "")
+      `<div class="summary-item ${summary.hidden > 0 ? "muted" : ""}">
+        <span>Hidden from view</span>
+        <strong>${escapeHtml(summary.hidden)}</strong>
+        <div class="summary-breakdown" aria-label="Hidden listener breakdown">${hiddenItems || "No hidden listeners"}</div>
+      </div>`
     ].join("");
   }
 
@@ -149,8 +164,10 @@
   function filterAndSortServers(servers, options = {}) {
     const filter = options.filter || "all";
     const sort = options.sort || "port";
+    const query = String(options.search || "").trim().toLowerCase();
     return [...(servers || [])]
       .filter((record) => format.matchesFilter(record, filter))
+      .filter((record) => !query || searchText(record).includes(query))
       .sort((a, b) => format.compareRecords(a, b, sort));
   }
 
@@ -161,7 +178,10 @@
       return "<div class=\"empty\">No visible listeners match this filter.</div>";
     }
 
-    return `<div class="server-list-inner" role="list">${filtered.map((record) => renderServer(record, options)).join("")}</div>`;
+    const relatedGroups = buildRelatedGroups(filtered);
+    const renderOptions = { ...options, relatedGroups };
+    return `<div class="server-results-header"><div><span class="field-label">Matching inventory</span><strong>${escapeHtml(filtered.length)} listener${filtered.length === 1 ? "" : "s"}</strong></div><span class="muted">Select a card to inspect evidence, ownership, and lifecycle context.</span></div>
+      <div class="server-list-inner" role="list">${filtered.map((record) => renderServer(record, renderOptions)).join("")}</div>`;
   }
 
   function renderServer(record, options = {}) {
@@ -170,6 +190,13 @@
     const title = probe.title || record.projectName || record.processName || `Port ${record.port}`;
     const hints = probe.hints || [];
     const project = record.project || null;
+    const attention = format.attentionReasons(record);
+    const related = options.relatedGroups && relatedGroup(record) ? options.relatedGroups[relatedGroup(record)] : null;
+    const ownershipLabel = project
+      ? `Managed: ${project.name || "project association"}`
+      : format.isUnmanaged(record)
+        ? "Unmanaged: project not detected"
+        : "Project association not detected";
 
     const label = serverAccessibleLabel(record, title);
 
@@ -186,6 +213,11 @@
             <span>Host <strong>${escapeHtml(record.host || "n/a")}</strong></span>
             <span>Process <strong>${escapeHtml(record.processName || "unknown")}</strong></span>
             <span>Category <strong>${escapeHtml(record.category || "unknown")}</strong></span>
+          </div>
+          <div class="card-context-row">
+            <span class="ownership-badge ${project ? "managed" : "unmanaged"}">${escapeHtml(ownershipLabel)}</span>
+            ${related && related.count > 1 ? `<span class="related-badge">Related app: ${escapeHtml(related.label)} · ${escapeHtml(related.count)} listeners</span>` : ""}
+            ${attention.length ? `<span class="attention-badge">Needs attention: ${escapeHtml(attention.join(", "))}</span>` : "<span class=\"quiet-badge\">No attention flags</span>"}
           </div>
         </div>
         <div class="url-actions">
@@ -209,7 +241,7 @@
         </div>
         <div>
           <span class="field-label">Project root</span>
-          <code>${escapeHtml(project && project.root ? project.root : "n/a")}</code>
+          <code>${escapeHtml(project && (project.displayRoot || project.root) ? (project.displayRoot || project.root) : "n/a")}</code>
         </div>
         <div>
           <span class="field-label">URL</span>
@@ -298,8 +330,8 @@
     return `<div class="action-eligibility-row ${modifier}" role="status" aria-live="polite">
       <span class="field-label">Read-only action readiness</span>
       <span><strong>${escapeHtml(statusLabel)}</strong></span>
-      <span>${escapeHtml(dryRun && dryRun.safeMessage ? dryRun.safeMessage : eligibility.safeMessage || "Inspect-only record.")}</span>
-      <span>Permission <strong>not granted</strong></span>
+      <span>${escapeHtml(dryRun && dryRun.safeMessage ? dryRun.safeMessage : eligibility.safeMessage || actionAvailabilityMessage(status))}</span>
+      <span>Permission <strong>not granted</strong> by design</span>
       ${button}
       ${confirmationUi}
     </div>`;
@@ -563,6 +595,71 @@
 
   function summaryItem(label, value, modifier = "") {
     return `<div class="summary-item ${escapeAttr(modifier)}"><span>${escapeHtml(label)}</span><strong>${escapeHtml(value)}</strong></div>`;
+  }
+
+  function hiddenLabel(key) {
+    const labels = {
+      protected: "Protected",
+      unknown: "Unknown",
+      nonLocalhost: "Non-localhost",
+      lowConfidence: "Low confidence",
+      duplicate: "Duplicate"
+    };
+    return labels[key] || key;
+  }
+
+  function relatedGroup(record) {
+    if (record.category !== "local-ai-server") return "";
+    const text = [
+      record.processName,
+      record.httpProbe && record.httpProbe.title,
+      ...((record.httpProbe && record.httpProbe.hints) || [])
+    ].filter(Boolean).join(" ").toLowerCase();
+    if (text.includes("ollama")) return "ollama";
+    if (text.includes("lm studio")) return "lm-studio";
+    if (text.includes("local companion")) return "local-companion";
+    return "";
+  }
+
+  function buildRelatedGroups(records) {
+    const groups = {};
+    for (const record of records) {
+      const key = relatedGroup(record);
+      if (!key) continue;
+      if (!groups[key]) {
+        groups[key] = {
+          label: key === "lm-studio" ? "LM Studio" : key === "local-companion" ? "Local companion" : "Ollama",
+          count: 0
+        };
+      }
+      groups[key].count += 1;
+    }
+    return groups;
+  }
+
+  function actionAvailabilityMessage(status) {
+    if (status === "ineligible") return "No safe process action is available for this listener.";
+    if (status === "blocked") return "A safety check is blocked; no process action is available.";
+    return "This dashboard is inspect-only; no process action is available here.";
+  }
+
+  function searchText(record) {
+    const project = record.project || {};
+    const probe = record.httpProbe || {};
+    const launcher = record.launcher || {};
+    return [
+      record.port,
+      record.host,
+      record.url,
+      record.processName,
+      record.category,
+      project.name,
+      project.displayRoot || project.root,
+      probe.title,
+      ...(probe.hints || []),
+      launcher.launcherName,
+      launcher.parentProcessName
+    ].filter(Boolean).join(" ").toLowerCase();
   }
 
   function scoreText(score) {

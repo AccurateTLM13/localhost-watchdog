@@ -62,6 +62,7 @@ test("detects Node project name from package.json", () => {
   assert.equal(project.source, "marker:package.json");
   assert.equal(project.confidence, 85);
   assert.match(project.root, /node-app$/);
+  assert.equal(project.displayRoot, projectRoot);
 });
 
 test("detects Next, Vite, and Astro config markers", () => {

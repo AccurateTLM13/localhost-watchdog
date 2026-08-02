@@ -1,7 +1,8 @@
 "use strict";
 
 const { existsSync, readFileSync, statSync } = require("node:fs");
-const { dirname, join, resolve } = require("node:path");
+const path = require("node:path");
+const { dirname, join, resolve } = path;
 
 const REPO_ROOT = resolve(__dirname, "..", "..");
 
@@ -36,21 +37,24 @@ function readJsonWithFallback(primaryPath, fallbackPath) {
 
 function normalizeConfig(config, options = {}) {
   const root = options.root || REPO_ROOT;
-  const projectRoots = (config.projects.projects || [])
-    .map((project) => project.path)
-    .filter(Boolean);
+  const normalizedProjects = (config.projects.projects || []).map(normalizeConfiguredProject);
+  const projectRoots = normalizedProjects.map((project) => project.root).filter(Boolean);
   const configuredDevRoots = (config.devRoots && config.devRoots.devRoots) || [];
   const normalizedDevRoots = normalizePathList([
     ...(config.safety.devRoots || []),
-    ...configuredDevRoots,
-    ...projectRoots
+    ...configuredDevRoots
+  ]);
+  const normalizedProjectRoots = normalizePathList(projectRoots).map(toDisplayComparablePath);
+  const effectiveDevRoots = unique([
+    ...normalizedDevRoots,
+    ...normalizedProjectRoots
   ]);
 
   return {
     safety: {
       ...config.safety,
-      devRoots: normalizedDevRoots,
-      devRootsDisplay: normalizedDevRoots.map(redactConfiguredPath),
+      devRoots: effectiveDevRoots,
+      devRootsDisplay: effectiveDevRoots.map(redactDisplayPath),
       protectedProcesses: config.safety.protectedProcesses || [],
       protectedPorts: normalizePortList(config.safety.protectedPorts || []),
       protectedPortRanges: normalizePortRanges(config.safety.protectedPortRanges || []),
@@ -64,12 +68,12 @@ function normalizeConfig(config, options = {}) {
     },
     projects: {
       ...config.projects,
-      projects: config.projects.projects || []
+      projects: normalizedProjects
     },
     devRoots: {
       version: config.devRoots ? config.devRoots.version || 1 : 1,
       devRoots: normalizePathList(configuredDevRoots),
-      devRootsDisplay: normalizePathList(configuredDevRoots).map(redactConfiguredPath)
+      devRootsDisplay: normalizePathList(configuredDevRoots).map(redactDisplayPath)
     }
   };
 }
@@ -131,11 +135,15 @@ function expandEnvPath(path) {
 }
 
 function normalizePath(value) {
-  return String(value || "").replace(/\//g, "\\").replace(/\\+$/, "").toLowerCase();
+  const text = String(value || "").trim();
+  if (isAbsoluteWindowsPath(text)) {
+    return text.replace(/\//g, "\\").replace(/\\+$/, "").toLowerCase();
+  }
+  return path.resolve(text).replace(/[\\/]+$/g, "");
 }
 
 function isUsableDevRootPath(value) {
-  if (!value || !isAbsoluteWindowsPath(value)) return false;
+  if (!value || (!isAbsoluteWindowsPath(value) && !path.isAbsolute(value))) return false;
   try {
     return existsSync(value) && statSync(value).isDirectory();
   } catch {
@@ -150,11 +158,22 @@ function isAbsoluteWindowsPath(value) {
 function redactConfiguredPath(value) {
   if (!value) return null;
   const text = String(value);
-  const home = normalizePath(process.env.USERPROFILE || process.env.HOME || "");
-  if (home && text.toLowerCase().startsWith(home.toLowerCase())) {
-    return `%USERPROFILE%${text.slice(home.length)}`;
+  const homeValue = process.env.USERPROFILE || process.env.HOME || "";
+  const home = normalizePath(homeValue);
+  if (homeValue && home && normalizePath(text).startsWith(home)) {
+    const suffix = text.slice(String(homeValue).replace(/[\\/]+$/g, "").length);
+    return `%USERPROFILE%${suffix}`;
   }
   return text;
+}
+
+function redactDisplayPath(value) {
+  const redacted = redactConfiguredPath(value);
+  return redacted ? redacted.replace(/\//g, "\\") : redacted;
+}
+
+function toDisplayComparablePath(value) {
+  return String(value || "").replace(/\//g, "\\");
 }
 
 function normalizePortList(ports) {
@@ -180,19 +199,64 @@ function lowerList(values) {
 function findProjectForRecord(record, projectsConfig) {
   const haystack = lowerPath(`${record.commandLine || ""} ${record.executablePath || ""}`);
   for (const project of projectsConfig.projects || []) {
-    if (!project.path) continue;
-    const projectPath = expandEnvPath(project.path).replace(/\//g, "\\").toLowerCase();
-    if (haystack.includes(projectPath)) {
+    const projectPath = normalizeProjectRoot(projectRootSource(project));
+    if (projectPath && containsPathIdentity(haystack, projectPath)) {
       return project;
     }
   }
   return null;
 }
 
+function normalizeConfiguredProject(project = {}) {
+  const rootSource = projectRootSource(project);
+  const root = normalizeProjectRoot(rootSource);
+  const displayRoot = preserveProjectDisplayRoot(projectDisplayRootSource(project));
+  const rest = Object.fromEntries(Object.entries(project).filter(([key]) => key !== "path"));
+  return { ...rest, root, displayRoot };
+}
+
+function projectRootSource(project = {}) {
+  return project && (project.root != null ? project.root : project.path);
+}
+
+function projectDisplayRootSource(project = {}) {
+  return project && (project.displayRoot != null
+    ? project.displayRoot
+    : project.root != null
+      ? project.root
+      : project.path);
+}
+
+function normalizeProjectRoot(value) {
+  const expanded = expandEnvPath(value);
+  return expanded ? normalizePath(expanded) : null;
+}
+
+function preserveProjectDisplayRoot(value) {
+  const expanded = expandEnvPath(value);
+  if (!expanded) return null;
+  return String(expanded).trim().replace(/\//g, "\\").replace(/[\\]+$/, "");
+}
+
+function containsPathIdentity(haystack, identity) {
+  let offset = haystack.indexOf(identity);
+  while (offset >= 0) {
+    const before = offset === 0 ? "" : haystack[offset - 1];
+    const end = offset + identity.length;
+    const after = end >= haystack.length ? "" : haystack[end];
+    if ((!before || /[\s"'=:\\/]/.test(before)) && (!after || /[\s"'\\/]/.test(after))) return true;
+    offset = haystack.indexOf(identity, offset + 1);
+  }
+  return false;
+}
+
 function isInsideConfiguredRoot(value, roots) {
   const haystack = lowerPath(value);
   if (!haystack) return false;
-  return roots.some((root) => haystack === root || haystack.startsWith(`${root}\\`));
+  return roots.some((root) => {
+    const normalizedRoot = lowerPath(root);
+    return haystack === normalizedRoot || haystack.startsWith(`${normalizedRoot}\\`);
+  });
 }
 
 function lowerPath(value) {
@@ -218,5 +282,9 @@ module.exports = {
   normalizePortList,
   normalizePortRanges,
   normalizePositiveInteger,
+  normalizeProjectRoot,
+  preserveProjectDisplayRoot,
+  projectDisplayRootSource,
+  projectRootSource,
   redactConfiguredPath
 };

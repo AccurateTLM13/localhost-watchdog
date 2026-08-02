@@ -137,6 +137,60 @@ test("dry-run API rejects unsafe request shapes with categorized safe errors", a
   });
 });
 
+test("real stop execution endpoint requires protected session and forwards execution proof", async () => {
+  const calls = [];
+  const server = createServer({
+    executionManager: {
+      executeStop: async (body, context) => {
+        calls.push({ body, sessionNonce: context.session.sessionNonce });
+        return {
+          ok: true,
+          state: "success",
+          actionExecuted: true,
+          executionAuthorized: true
+        };
+      }
+    }
+  });
+
+  await withListeningServer(server, async (baseUrl) => {
+    const session = await postJson(`${baseUrl}/api/session`, {});
+    assert.equal(session.statusCode, 200);
+
+    const wrongMethod = await getJson(`${baseUrl}/api/actions/stop/execute`);
+    assert.equal(wrongMethod.statusCode, 405);
+    assert.equal(wrongMethod.body.code, "METHOD_NOT_ALLOWED");
+
+    const noOrigin = await postJson(`${baseUrl}/api/actions/stop/execute`, {
+      sessionNonce: session.body.sessionNonce,
+      csrfToken: session.body.csrfToken
+    }, {
+      "x-csrf-token": session.body.csrfToken
+    });
+    assert.equal(noOrigin.statusCode, 403);
+    assert.equal(noOrigin.body.code, "ORIGIN_BLOCKED");
+
+    const executed = await postJson(`${baseUrl}/api/actions/stop/execute`, {
+      sessionNonce: session.body.sessionNonce,
+      csrfToken: session.body.csrfToken,
+      confirmationRequestId: "confirm-" + "a".repeat(32),
+      processInstanceId: "pid-1-created-2026-06-18t12-00-00-000z",
+      listenerId: "pid-1-created-2026-06-18t12-00-00-000z-listener-tcp-127-0-0-1-5173",
+      idempotencyKey: "execute-api"
+    }, localHeaders(baseUrl, session.body.csrfToken, {
+      "x-execution-access-token": "exec-access-" + "b".repeat(64)
+    }));
+
+    assert.equal(executed.statusCode, 200);
+    assert.equal(executed.body.state, "success");
+    assert.equal(executed.body.actionExecuted, true);
+    assert.equal(calls.length, 1);
+    assert.equal(calls[0].body.executionMode, "execute");
+    assert.equal(calls[0].body.executionAccessToken, "exec-access-" + "b".repeat(64));
+    assert.equal(calls[0].sessionNonce, session.body.sessionNonce);
+  });
+});
+
 test("confirmation API requires session, CSRF, status proof, and never executes action", async () => {
   const calls = [];
   const server = createServer({
@@ -309,3 +363,86 @@ function requestJson(url, options) {
     request.end();
   });
 }
+
+test("project start and restart endpoints require protected sessions and call injected managers", async () => {
+  const calls = [];
+  const server = createServer({
+    startManager: {
+      listProjects: async () => ({ ok: true, projects: [{ id: "web", status: "stopped" }], actionExecuted: false }),
+      startProject: async (body, context) => { calls.push(["start", body.projectId, context.session.sessionNonce]); return { ok: true, state: "start-dispatched", actionExecuted: true }; }
+    },
+    restartManager: {
+      restartProject: async (body, context) => { calls.push(["restart", body.projectId, context.session.sessionNonce]); return { ok: true, state: "restart-completed", actionExecuted: true, executionAuthorized: true }; }
+    }
+  });
+
+  await withListeningServer(server, async (baseUrl) => {
+    const listed = await getJson(`${baseUrl}/api/projects`);
+    assert.equal(listed.statusCode, 200);
+    assert.equal(listed.body.projects[0].id, "web");
+
+    const session = await postJson(`${baseUrl}/api/session`, {});
+    const start = await postJson(`${baseUrl}/api/projects/start`, {
+      sessionNonce: session.body.sessionNonce,
+      csrfToken: session.body.csrfToken,
+      projectId: "web",
+      idempotencyKey: "start-api"
+    }, localHeaders(baseUrl, session.body.csrfToken));
+    assert.equal(start.statusCode, 200);
+    assert.equal(start.body.actionExecuted, true);
+
+    const restart = await postJson(`${baseUrl}/api/projects/restart`, {
+      sessionNonce: session.body.sessionNonce,
+      csrfToken: session.body.csrfToken,
+      projectId: "web",
+      idempotencyKey: "restart-api"
+    }, localHeaders(baseUrl, session.body.csrfToken));
+    assert.equal(restart.statusCode, 200);
+    assert.equal(restart.body.state, "restart-completed");
+    assert.deepEqual(calls, [["start", "web", session.body.sessionNonce], ["restart", "web", session.body.sessionNonce]]);
+  });
+});
+
+test("project adoption endpoint requires protected session and calls injected adoption manager", async () => {
+  const calls = [];
+  const server = createServer({
+    adoptionManager: {
+      adoptProject: async (body, context) => { calls.push([body.record.port, context.session.sessionNonce]); return { ok: true, state: "project-adopted", actionExecuted: false }; }
+    }
+  });
+
+  await withListeningServer(server, async (baseUrl) => {
+    const session = await postJson(`${baseUrl}/api/session`, {});
+    const adopted = await postJson(`${baseUrl}/api/projects/adopt`, {
+      sessionNonce: session.body.sessionNonce,
+      csrfToken: session.body.csrfToken,
+      record: { port: 5173 }
+    }, localHeaders(baseUrl, session.body.csrfToken));
+    assert.equal(adopted.statusCode, 200);
+    assert.equal(adopted.body.state, "project-adopted");
+    assert.equal(adopted.body.actionExecuted, false);
+    assert.deepEqual(calls, [[5173, session.body.sessionNonce]]);
+  });
+});
+
+test("project adoption draft endpoint requires protected session and returns editable draft", async () => {
+  const server = createServer({
+    adoptionManager: {
+      draftAdoption: (body) => ({ ok: true, state: "adoption-draft-ready", draft: { id: "web", preferredPort: body.record.port }, actionExecuted: false }),
+      adoptProject: async () => ({ ok: false, actionExecuted: false })
+    }
+  });
+
+  await withListeningServer(server, async (baseUrl) => {
+    const session = await postJson(`${baseUrl}/api/session`, {});
+    const draft = await postJson(`${baseUrl}/api/projects/adopt/draft`, {
+      sessionNonce: session.body.sessionNonce,
+      csrfToken: session.body.csrfToken,
+      record: { port: 5173 }
+    }, localHeaders(baseUrl, session.body.csrfToken));
+    assert.equal(draft.statusCode, 200);
+    assert.equal(draft.body.state, "adoption-draft-ready");
+    assert.equal(draft.body.draft.preferredPort, 5173);
+    assert.equal(draft.body.actionExecuted, false);
+  });
+});

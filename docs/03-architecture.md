@@ -2,14 +2,17 @@
 
 ## Recommended Build Path
 
-Start with a **Node backend + plain HTML/CSS/JS dashboard**. Wrap it in Tauri later when the scanner, safety model, and process actions are proven.
+Start with a **Node backend + plain HTML/CSS/JS dashboard**. Add a small Windows PowerShell/.NET tray companion after the scanner, safety model, and process actions are proven; a heavier native wrapper remains optional.
 
 ```txt
 Phase 1: Node scanner CLI
 Phase 2: Local dashboard on localhost:4545
-Phase 3: Managed project config and restart
-Phase 4: Windows tray/Tauri wrapper
-Phase 5: Cross-platform cleanup
+Phase 3: Managed project config and start/restart
+Phase 4: Windows graceful stop
+Phase 5: Managed project launcher
+Phase 6: Managed project restart
+Phase 7: Server adoption
+Phase 8: Windows tray companion
 ```
 
 ## High-Level Architecture
@@ -166,11 +169,16 @@ Stores known projects.
     {
       "id": "locailly",
       "name": "LocAIly",
-      "path": "C:\\Users\\JP\\Desktop\\locailly",
-      "startCommand": "npm run dev",
+      "root": "c:\\users\\jp\\desktop\\locailly",
+      "displayRoot": "C:\\Users\\JP\\Desktop\\Locailly",
+      "start": {
+        "command": "node",
+        "args": ["server.js"],
+        "cwd": "C:\\Users\\JP\\Desktop\\locailly"
+      },
       "preferredPort": 31313,
       "runtime": "node",
-      "safeToRestart": true
+      "managed": true
     }
   ]
 }
@@ -200,15 +208,20 @@ History matters because restart requires knowing what command and directory laun
 http://localhost:4545
 ```
 
-Current read-only routes:
+Current routes:
 
 ```txt
 GET  /api/servers
 GET  /api/diagnostics
 GET  /api/diagnostics/export
+GET  /api/projects
+POST /api/projects/start
+POST /api/projects/restart
+POST /api/projects/adopt/draft
+POST /api/projects/adopt
 ```
 
-Future action routes are intentionally not specified in the current implemented architecture. They require a separate action-contract design phase with identity and port revalidation, protected-boundary checks, dry-run semantics, explicit confirmation, and privacy-safe audit logging.
+The generic scanner routes remain read-only. Managed project start/restart routes are protected by the local session/CSRF envelope and use explicit registry provenance, managed process identity, port ownership revalidation, and privacy-safe action history. Generic server stop/restart, process-tree, force-stop, and bulk routes remain out of scope.
 
 ### UI Sections
 
@@ -219,19 +232,19 @@ Future action routes are intentionally not specified in the current implemented 
 5. Recent Actions
 6. Settings
 
-## Later Tauri Wrapper
+## Windows Tray Companion
 
-Use Tauri after the local dashboard is proven.
+Phase 8 uses a PowerShell/.NET `System.Windows.Forms.NotifyIcon` host around the existing local Node server and browser dashboard. This keeps the scanner and action engine reusable without adding Rust, Tauri, or an embedded webview.
 
-Tauri responsibilities:
+The companion responsibilities are deliberately narrow:
 
-- Taskbar/tray icon.
-- Popup dashboard window.
-- Autostart setting.
-- Native notifications.
-- Secure command execution bridge.
+- Start the Watchdog Node backend only when the local health endpoint is unavailable.
+- Open the existing dashboard URL in the default browser.
+- Provide Open, Refresh, and Quit tray actions.
+- Show visible/stale counts through the tray tooltip and native notifications.
+- Request shutdown only for a backend process that the companion started, using an ephemeral host-control token.
 
-Keep the scanner/action engine reusable. The Tauri UI should call the same internal API or service layer.
+The companion must not own generic process-control capability. Managed project start/restart continues to use the protected HTTP contracts, and tray quit must preserve `serversTerminated:false`. An Electron, Neutralino, or future native wrapper can replace the shell later without changing the API or scanner layers.
 
 ## Folder Structure
 

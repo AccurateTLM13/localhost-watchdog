@@ -27,9 +27,9 @@ async function main() {
       "",
       "Commands:",
       "  node watchdog.js scan [--compact]  Emit a read-only JSON scanner snapshot",
-      "  node watchdog.js serve             Start the local read-only inspector",
+      "  node watchdog.js serve             Start the local dashboard and protected project-action API",
       "",
-      "No stop, restart, or destructive actions exist in this phase."
+      "Generic scanner records remain read-only; managed project start/restart uses explicit registry identity."
     ].join("\n") + "\n");
     return;
   }

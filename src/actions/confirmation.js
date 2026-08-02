@@ -10,7 +10,9 @@ const { scanWindows } = require("../scanner/windows");
 const { evaluateConfirmationPolicy } = require("./security-policy");
 
 const DEFAULT_CONFIRMATION_TTL_MS = 60 * 1000;
+const DEFAULT_EXECUTION_PROOF_TTL_MS = 30 * 1000;
 const CONFIRMATION_TOKEN_BYTES = 32;
+const EXECUTION_TOKEN_BYTES = 32;
 const GENERIC_CONFIRMATION_UNAVAILABLE = Object.freeze({
   ok: false,
   state: "not-available",
@@ -25,6 +27,7 @@ function createConfirmationManager(options = {}) {
   const confirmations = new Map();
   const idempotency = new Map();
   const ttlMs = Number.isFinite(options.ttlMs) ? options.ttlMs : DEFAULT_CONFIRMATION_TTL_MS;
+  const executionProofTtlMs = Number.isFinite(options.executionProofTtlMs) ? options.executionProofTtlMs : DEFAULT_EXECUTION_PROOF_TTL_MS;
   const scanProvider = options.scanProvider || (() => scanWindows({ skipHistory: true }));
   const auditWriter = options.auditWriter || writeConfirmationAudit;
   const clock = options.clock || (() => new Date());
@@ -179,7 +182,14 @@ function createConfirmationManager(options = {}) {
     entry.acceptedIdempotencyKeyHash = normalizeKey(input.idempotencyKey) ? tokenHash(normalizeKey(input.idempotencyKey)) : null;
     entry.tokenHash = null;
     entry.policy = policy;
-    return acceptedResponse(entry);
+    const executionAccessToken = `exec-access-${randomId(EXECUTION_TOKEN_BYTES)}`;
+    entry.executionTokenHash = tokenHash(executionAccessToken);
+    entry.executionProofExpiresAt = new Date(Math.min(
+      now.getTime() + executionProofTtlMs,
+      new Date(entry.expiresAt).getTime()
+    )).toISOString();
+    entry.executionProofConsumedAt = null;
+    return acceptedResponse(entry, executionAccessToken);
   }
 
   function getConfirmationStatus(input = {}, context = {}) {
@@ -323,25 +333,32 @@ function publicStatus(entry) {
     authorization: {
       authorizesStatusRead: false,
       authorizesConfirmation: entry.state === "awaiting-confirmation",
-      authorizesExecution: false
+      authorizesExecution: entry.state === "confirmation-accepted" && Boolean(entry.executionTokenHash)
     },
     actionExecuted: false,
     executionAuthorized: false
   };
 }
 
-function acceptedResponse(entry) {
+function acceptedResponse(entry, executionAccessToken) {
   return {
     ok: true,
     confirmationRequestId: entry.confirmationRequestId,
     dryRunRequestId: entry.dryRunRequestId,
     state: "confirmation-accepted",
     acceptedAt: entry.acceptedAt,
-    message: "Confirmation recorded. No process action was executed.",
+    message: executionAccessToken
+      ? "Confirmation recorded. A short-lived execution proof was issued for this exact target."
+      : "Confirmation recorded. No process action was executed.",
+    executionAccessToken: executionAccessToken || undefined,
+    executionProof: executionAccessToken ? {
+      expiresAt: entry.executionProofExpiresAt,
+      tokenType: "single-use"
+    } : undefined,
     authorization: {
       authorizesStatusRead: false,
       authorizesConfirmation: false,
-      authorizesExecution: false
+      authorizesExecution: Boolean(executionAccessToken)
     },
     actionExecuted: false,
     executionAuthorized: false
