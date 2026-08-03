@@ -12,7 +12,10 @@ const {
 } = require("./managed-contract");
 
 const execFileAsync = promisify(execFile);
-const DEFAULT_TIMEOUT_MS = 5000;
+// PowerShell/.NET startup can be cold on a clean Windows host or hosted runner.
+// Keep this separate from the managed project's listener/startup verification
+// windows so helper startup has room without weakening post-launch identity checks.
+const DEFAULT_TIMEOUT_MS = 15000;
 const SCRIPT_PATH = path.join(__dirname, "windows-project-launcher.ps1");
 const EXECUTABLE_EXTENSIONS = ["", ".exe", ".com", ".cmd", ".bat"];
 const DIRECT_EXECUTABLE_EXTENSIONS = new Set([".exe", ".com"]);
