@@ -44,6 +44,38 @@ function classifyReadOnly(record, options = {}) {
   let category = "unknown-listener";
   let hiddenReason = null;
 
+  if (record.watchdogSelf) {
+    return {
+      ...record,
+      category: "watchdog-internal",
+      runtime: "node",
+      project: null,
+      projectId: null,
+      projectName: null,
+      managed: true,
+      internal: true,
+      confidence: 100,
+      confidenceLevel: "high",
+      safeToShow: false,
+      safeToStop: false,
+      safeToRestart: false,
+      bulkStoppable: false,
+      actions: [],
+      evidence: [{
+        type: "watchdog-self",
+        score: 100,
+        message: "listener matches the running Watchdog backend process, host, and port"
+      }],
+      reasons: ["listener matches the running Watchdog backend process, host, and port"],
+      warnings: [],
+      networkExposure: getNetworkExposure(record.host),
+      hiddenReason: "watchdog-self",
+      httpProbe: {
+        attempted: false
+      }
+    };
+  }
+
   if (isLocalBind(record.host)) {
     confidence += addEvidence(evidence, "network", 20, "listener is bound to localhost");
   } else if (isWildcardBind(record.host)) {

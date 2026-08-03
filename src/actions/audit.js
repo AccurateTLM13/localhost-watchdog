@@ -3,9 +3,10 @@
 const { appendFileSync, existsSync, mkdirSync, readFileSync, renameSync, unlinkSync, writeFileSync } = require("node:fs");
 const { dirname, join } = require("node:path");
 const { redactSensitiveText } = require("../privacy/redact");
+const { resolveRuntimePaths } = require("../runtime/paths");
 
-const DEFAULT_DRY_RUN_AUDIT_PATH = join(process.cwd(), ".localhost-watchdog", "dry-run-audit.jsonl");
-const DEFAULT_CONFIRMATION_AUDIT_PATH = join(process.cwd(), ".localhost-watchdog", "confirmation-audit.jsonl");
+const DEFAULT_DRY_RUN_AUDIT_PATH = resolveRuntimePaths().dryRunAuditPath;
+const DEFAULT_CONFIRMATION_AUDIT_PATH = resolveRuntimePaths().confirmationAuditPath;
 const CONFIRMATION_AUDIT_SCHEMA = "localhost-watchdog.confirmation-audit.v1";
 const DEFAULT_CONFIRMATION_RETENTION = Object.freeze({
   maxAgeMs: 30 * 24 * 60 * 60 * 1000,
@@ -13,7 +14,7 @@ const DEFAULT_CONFIRMATION_RETENTION = Object.freeze({
 });
 
 function writeDryRunAudit(result, options = {}) {
-  const filePath = options.filePath || DEFAULT_DRY_RUN_AUDIT_PATH;
+  const filePath = options.filePath || resolveRuntimePaths().dryRunAuditPath;
   const writer = options.writer || defaultWriter;
   const record = buildDryRunAuditRecord(result);
   writer(filePath, `${JSON.stringify(record)}\n`);
@@ -50,7 +51,7 @@ function defaultWriter(filePath, line) {
 }
 
 function writeConfirmationAudit(input, options = {}) {
-  const filePath = options.filePath || DEFAULT_CONFIRMATION_AUDIT_PATH;
+  const filePath = options.filePath || resolveRuntimePaths().confirmationAuditPath;
   const retention = {
     ...DEFAULT_CONFIRMATION_RETENTION,
     ...(options.retention || {})
@@ -162,7 +163,7 @@ function safeOutcomeMap(value) {
   return result;
 }
 
-const DEFAULT_EXECUTION_AUDIT_PATH = join(process.cwd(), ".localhost-watchdog", "execution-audit.jsonl");
+const DEFAULT_EXECUTION_AUDIT_PATH = resolveRuntimePaths().executionAuditPath;
 const EXECUTION_AUDIT_SCHEMA = "localhost-watchdog.execution-audit.v1";
 const DEFAULT_EXECUTION_RETENTION = Object.freeze({
   maxAgeMs: 30 * 24 * 60 * 60 * 1000,
@@ -170,7 +171,7 @@ const DEFAULT_EXECUTION_RETENTION = Object.freeze({
 });
 
 function writeExecutionAudit(input, options = {}) {
-  const filePath = options.filePath || DEFAULT_EXECUTION_AUDIT_PATH;
+  const filePath = options.filePath || resolveRuntimePaths().executionAuditPath;
   const retention = {
     ...DEFAULT_EXECUTION_RETENTION,
     ...(options.retention || {})

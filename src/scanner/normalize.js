@@ -93,6 +93,7 @@ function normalizeConnections(connections, processes, options = {}) {
     unknown: 0,
     nonLocalhost: 0,
     lowConfidence: 0,
+    watchdog: 0,
     duplicate: Math.max(0, connections.length - normalizedConnections.length)
   };
 
@@ -141,7 +142,8 @@ function normalizeConnections(connections, processes, options = {}) {
       rawSource,
       raw: {
         source: rawSource
-      }
+      },
+      watchdogSelf: isWatchdogListener(connection, host, options.watchdog)
     };
     const analysisRecord = {
       ...record,
@@ -180,6 +182,8 @@ function normalizeConnections(connections, processes, options = {}) {
 
     if (finalRecord.safeToShow) {
       visible.push(finalRecord);
+    } else if (finalRecord.hiddenReason === "watchdog-self") {
+      hidden.watchdog += 1;
     } else if (finalRecord.hiddenReason === "protected") {
       hidden.protected += 1;
     } else if (finalRecord.hiddenReason === "non-localhost") {
@@ -198,6 +202,14 @@ function normalizeConnections(connections, processes, options = {}) {
     visible,
     hidden
   };
+}
+
+function isWatchdogListener(connection, host, watchdog = {}) {
+  const currentPid = Number(watchdog.CurrentProcessId);
+  const currentPort = Number(watchdog.CurrentPort);
+  if (!Number.isInteger(currentPid) || currentPid <= 0 || Number(connection.pid) !== currentPid) return false;
+  if (!Number.isInteger(currentPort) || Number(connection.port) !== currentPort) return false;
+  return normalizeHost(watchdog.CurrentHost || "127.0.0.1") === normalizeHost(host);
 }
 
 

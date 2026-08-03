@@ -321,6 +321,10 @@ powershell.exe -NoProfile -STA -File .\scripts\Start-LocalhostWatchdogTray.ps1
 
 The companion starts `node watchdog.js serve` only when `GET /api/health` is unavailable, opens `http://127.0.0.1:4545` in the default browser, provides Open/Refresh/Quit tray actions, and shows visible/stale server status through the tray tooltip and notifications. Quit can close only a backend started by that companion through a token-protected local host-control route; it never stops managed dev servers, uses process-tree termination, or force-kills a process. If a healthy backend already exists, the companion does not claim ownership and leaves that backend running when the tray exits. See [docs/phase8-manual-test.md](docs/phase8-manual-test.md) for the manual Windows acceptance checklist.
 
+## Installable Windows package
+
+The Windows release package is staged by [packaging/windows/build-release.ps1](packaging/windows/build-release.ps1). It bundles a tested Node.js runtime, copies only runtime files, writes release metadata and SHA-256 checksums, and can build a per-user Inno Setup installer. The installed tray companion prefers the bundled runtime and stores mutable configuration, history, audits, and logs under `%LOCALAPPDATA%\Localhost Watchdog`; the program files remain under `%LOCALAPPDATA%\Programs\Localhost Watchdog`. See [packaging/windows/README.md](packaging/windows/README.md) for build and clean-machine acceptance instructions.
+
 See [docs/scanner-policy.md](docs/scanner-policy.md) for redaction, fixture, protected-process, and confidence rules.
 
 ## Document Map

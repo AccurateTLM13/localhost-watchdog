@@ -3,6 +3,7 @@
 const os = require("node:os");
 const { readFileSync } = require("node:fs");
 const { join } = require("node:path");
+const { resolveRuntimePaths } = require("../runtime/paths");
 
 const EXPORT_SCHEMA_VERSION = "localhost-watchdog.diagnostics-export.v1";
 const DEFAULT_FORMAT = "markdown";
@@ -303,7 +304,7 @@ function normalizeFormat(format) {
 
 function readPackageVersion() {
   try {
-    const pkg = JSON.parse(readFileSync(join(REPO_ROOT, "package.json"), "utf8"));
+    const pkg = JSON.parse(readFileSync(join(resolveRuntimePaths().appRoot, "package.json"), "utf8"));
     return String(pkg.version || "unknown");
   } catch {
     return "unknown";

@@ -75,6 +75,10 @@ Never release a version that adds destructive behavior without new safety tests.
 - [ ] App handles permission denied gracefully.
 - [ ] Installer/zip notes are clear.
 - [ ] Version number updated.
+- [ ] Release staging bundles a tested Node runtime and excludes tests, source-control metadata, and local state.
+- [ ] Installed code and mutable user data use separate directories.
+- [ ] Clean Windows x64 install passes without Git, Node.js, Rust, Tauri, or a repository checkout.
+- [ ] Watchdog's own backend is identified by exact process, host, and port identity and is not presented as an unmanaged server.
 
 ## Known Risk List
 
